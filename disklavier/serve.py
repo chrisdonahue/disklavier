@@ -124,14 +124,4 @@ def note_off():
 
 
 if __name__ == "__main__":
-    # Get the host IP for network access
-    import socket
-
-    hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
-
-    print(f"Starting server on http://{local_ip}:5000")
-    print("You can access this from other devices on your network using this URL")
-
-    # Run the Flask app
     app.run(host="0.0.0.0", port=5000, debug=True)
