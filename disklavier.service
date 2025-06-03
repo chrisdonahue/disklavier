@@ -1,0 +1,17 @@
+[Unit]
+Description=Disklavier Recording Service
+After=network.target
+
+[Service]
+Type=forking
+User=chrisdonahue
+WorkingDirectory=/home/chrisdonahue/Code/disklavier
+Environment=TMUX_TMPDIR=/tmp
+ExecStart=/usr/bin/tmux new-session -d -s DISKLAVIER
+ExecStartPost=/usr/bin/tmux send-keys -t DISKLAVIER:0.0 'source .venv/bin/activate && python -m disklavier.record' C-m
+ExecStop=/usr/bin/tmux kill-session -t DISKLAVIER
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 
