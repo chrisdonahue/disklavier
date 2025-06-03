@@ -1,1 +1,3 @@
-from .paths import LIB_DIR, CACHE_DIR
+from .disklavier import Disklavier
+
+__all__ = ["Disklavier"]
