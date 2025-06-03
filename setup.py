@@ -10,6 +10,7 @@ setup(
     entry_points={
         "console_scripts": [
             "disklavier-record=disklavier.record:main",
+            "disklavier-activity=disklavier.activity:main",
             "disklavier=disklavier.disklavier:main",
         ],
     },

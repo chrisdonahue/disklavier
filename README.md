@@ -9,6 +9,7 @@ A Python package for interfacing with Yamaha Disklavier MIDI systems, featuring 
 - **Smart filtering** - focuses on musical events (notes, pedals) while filtering out system timing messages
 - **Automatic file saving** with descriptive filenames including timestamp, duration, and note count
 - **Real-time monitoring** with live feedback of incoming MIDI events
+- **Practice statistics** - analyze practice sessions with detailed activity reports
 
 ## Installation
 
@@ -92,6 +93,83 @@ Recordings are automatically saved to:
    📊 Events: 3
 ```
 
+## Practice Activity Analysis
+
+Analyze your practice sessions with detailed statistics:
+
+```bash
+# Show all-time practice statistics
+disklavier-activity --all
+
+# Show today's practice only
+disklavier-activity --today
+
+# Show last 7 days (default)
+disklavier-activity
+
+# Show last 30 days
+disklavier-activity --days 30
+```
+
+### Visual Activity Charts
+
+Create GitHub-style activity visualizations (requires `matplotlib`):
+
+```bash
+# Install matplotlib for visualizations
+pip install matplotlib
+
+# Create activity chart (always shows last 365 days)
+disklavier-activity --visualize
+
+# Create chart with different metrics
+disklavier-activity --visualize --metric sessions  # Show session count
+disklavier-activity --visualize --metric notes     # Show note count
+disklavier-activity --visualize --metric duration  # Show practice time (default)
+
+# Save to custom file
+disklavier-activity --visualize --output my_chart.png --metric notes
+```
+
+The visualization creates a GitHub-style activity grid showing:
+- **365 days of practice activity** in a wide format
+- **Weekly layout** starting with Sunday at top, Saturday at bottom
+- **Day labels** for Mon, Wed, Fri only (clean layout)
+- **Color intensity** representing activity level (lighter = less, darker = more)
+- **Month labels** across the top
+- **Legend** showing color scale from "Less" to "More"
+
+### Example Activity Report
+
+```
+📊 All-Time Practice Activity
+==========================
+🎵 Sessions: 23
+⏰ Total practice time: 2h 15m 32s
+🎹 Total notes played: 5,847
+📈 Average session: 5m 54s, 254 notes
+🎯 Notes per minute: 43.2
+```
+
+### Programmatic Usage
+
+```python
+from disklavier.activity import activity_over_period, create_summary_image
+import time
+
+# Get practice stats for the last week
+week_ago = time.time() - (7 * 24 * 60 * 60)
+sessions, duration, notes = activity_over_period(week_ago, time.time())
+
+print(f"Last week: {sessions} sessions, {duration:.1f} seconds, {notes} notes")
+
+# Create a visualization (returns PNG bytes)
+png_bytes = create_summary_image(metric="duration")
+if png_bytes:
+    with open("my_activity.png", "wb") as f:
+        f.write(png_bytes)
+```
+
 ## Interactive Testing
 
 For interactive testing and device exploration:
@@ -122,7 +200,17 @@ Recordings are saved as standard MIDI files (.mid) with:
 - **Control Changes**: Pedal events (sustain, soft, sostenuto)
 - **System filtering**: Optional filtering of timing/system messages
 
+### Activity Analysis
+
+The activity analysis works by:
+- Parsing filename timestamps, durations, and note counts
+- Filtering recordings by time period
+- Aggregating statistics across multiple sessions
+- Providing both raw data and formatted reports
+
 ## Command Line Options
+
+### Recording Daemon
 
 ```
 disklavier-record [-h] [-i INPUT] [-t TIMEOUT] [--include-system] [--list-devices]
@@ -135,6 +223,18 @@ options:
                         Silence timeout in seconds before saving recording (default: 10.0)
   --include-system      Include system timing messages (default is to filter them out)
   --list-devices        List available MIDI input devices and exit
+```
+
+### Activity Analysis
+
+```
+disklavier-activity [-h] [--days DAYS] [--today] [--all]
+
+options:
+  -h, --help            show this help message and exit
+  --days DAYS, -d DAYS  Number of recent days to analyze (default: 7)
+  --today               Show only today's activity
+  --all                 Show all-time activity
 ```
 
 ## Dependencies
