@@ -1,4 +1,4 @@
-from typing import List, Callable
+from typing import List, Callable, Optional
 import argparse
 from .midi import MidiInterface
 
@@ -15,24 +15,24 @@ class Disklavier(MidiInterface):
 
     def __init__(
         self,
-        input_device_pattern: str = "*USB Midi*",
-        output_device_pattern: str = "*USB Midi*",
+        input_device_pattern: Optional[str] = "*USB Midi*",
+        output_device_pattern: Optional[str] = "*USB Midi*",
         filter_system: bool = True,
     ):
         """
         Initialize Disklavier MIDI interface.
 
         Args:
-            input_device_pattern: Pattern for input device (default: "*USB Midi*")
-            output_device_pattern: Pattern for output device (default: "*USB Midi*")
+            input_device_pattern: Pattern for input device (default: "*USB Midi*", None to disable)
+            output_device_pattern: Pattern for output device (default: "*USB Midi*", None to disable)
             filter_system: If True, filter out system timing messages (default: True)
         """
         super().__init__(input_device_pattern, output_device_pattern)
         self._user_callback = None
         self.filter_system = filter_system
 
-        # Override the parent callback with our filtering callback
-        if self.midi_in:
+        # Override the parent callback with our filtering callback if input device exists
+        if self.midi_in is not None:
             self.midi_in.set_callback(self._disklavier_callback)
 
     def _is_musical_message(self, midi_bytes: List[int]) -> bool:
@@ -109,31 +109,68 @@ class Disklavier(MidiInterface):
         Args:
             callback_function: Function that takes (midi_bytes: List[int], delta_time: float)
                               Only receives note on/off and control change messages if filter_system=True.
+
+        Raises:
+            RuntimeError: If no input device is configured
         """
+        if self.midi_in is None:
+            raise RuntimeError("No MIDI input device configured. Cannot set callback.")
         self._user_callback = callback_function
 
     def send_note_on(self, note: int, velocity: int = 100, channel: int = 0):
-        """Send a note on message."""
-        if self.midi_out:
-            self.send_message([0x90 | channel, note, velocity])
+        """
+        Send a note on message.
+
+        Raises:
+            RuntimeError: If no output device is configured
+        """
+        if self.midi_out is None:
+            raise RuntimeError("No MIDI output device configured. Cannot send note on.")
+        self.send_message([0x90 | channel, note, velocity])
 
     def send_note_off(self, note: int, velocity: int = 0, channel: int = 0):
-        """Send a note off message."""
-        if self.midi_out:
-            self.send_message([0x80 | channel, note, velocity])
+        """
+        Send a note off message.
+
+        Raises:
+            RuntimeError: If no output device is configured
+        """
+        if self.midi_out is None:
+            raise RuntimeError(
+                "No MIDI output device configured. Cannot send note off."
+            )
+        self.send_message([0x80 | channel, note, velocity])
 
     def send_control_change(self, control: int, value: int, channel: int = 0):
-        """Send a control change message."""
-        if self.midi_out:
-            self.send_message([0xB0 | channel, control, value])
+        """
+        Send a control change message.
+
+        Raises:
+            RuntimeError: If no output device is configured
+        """
+        if self.midi_out is None:
+            raise RuntimeError(
+                "No MIDI output device configured. Cannot send control change."
+            )
+        self.send_message([0xB0 | channel, control, value])
 
     def send_sustain_pedal(self, down: bool, channel: int = 0):
-        """Send sustain pedal control change (CC 64)."""
+        """
+        Send sustain pedal control change (CC 64).
+
+        Raises:
+            RuntimeError: If no output device is configured
+        """
         value = 127 if down else 0
         self.send_control_change(64, value, channel)
 
     def send_soft_pedal(self, down: bool, channel: int = 0):
-        """Send soft pedal control change (CC 67)."""
+        """
+        Send soft pedal control change (CC 67).
+
+        Raises:
+            RuntimeError: If no output device is configured
+        """
         value = 127 if down else 0
         self.send_control_change(67, value, channel)
 
@@ -209,6 +246,16 @@ def main():
         default="*USB Midi*",
         help="Output device pattern (default: '*USB Midi*')",
     )
+    parser.add_argument(
+        "--no-input",
+        action="store_true",
+        help="Disable MIDI input (output only mode)",
+    )
+    parser.add_argument(
+        "--no-output",
+        action="store_true",
+        help="Disable MIDI output (input only mode)",
+    )
 
     args = parser.parse_args()
 
@@ -216,54 +263,74 @@ def main():
     print("=" * 50)
 
     try:
+        # Determine device patterns based on arguments
+        input_pattern = None if args.no_input else args.input
+        output_pattern = None if args.no_output else args.output
+
         # Initialize Disklavier with CLI arguments
         print("Initializing Disklavier...")
-        print(f"Input pattern: {args.input}")
-        print(f"Output pattern: {args.output}")
+        print(f"Input pattern: {input_pattern if input_pattern else 'Disabled'}")
+        print(f"Output pattern: {output_pattern if output_pattern else 'Disabled'}")
         print(f"Filter system messages: {not args.include_system}")
 
         disklavier = Disklavier(
-            input_device_pattern=args.input,
-            output_device_pattern=args.output,
+            input_device_pattern=input_pattern,
+            output_device_pattern=output_pattern,
             filter_system=not args.include_system,
         )
 
-        print(f"✓ Input device: {'Connected' if disklavier.midi_in else 'Not found'}")
-        print(f"✓ Output device: {'Connected' if disklavier.midi_out else 'Not found'}")
+        input_status = "Connected" if disklavier.midi_in else "Disabled/Not found"
+        output_status = "Connected" if disklavier.midi_out else "Disabled/Not found"
+        print(f"✓ Input device: {input_status}")
+        print(f"✓ Output device: {output_status}")
 
-        # Set up callback to print MIDI messages
-        def midi_callback(message: List[int], delta_time: float):
-            msg_type = disklavier.get_message_type_name(message)
-            note_info = ""
+        # Set up callback to print MIDI messages if input is available
+        if disklavier.midi_in:
 
-            # Add note name for note messages
-            if len(message) >= 3 and (message[0] & 0xF0) in [0x80, 0x90]:
-                note_name = get_note_name(message[1])
-                velocity = message[2]
-                note_info = f" | {note_name} vel={velocity}"
-            elif len(message) >= 3 and (message[0] & 0xF0) == 0xB0:
-                value = message[2]
-                note_info = f" | value={value}"
+            def midi_callback(message: List[int], delta_time: float):
+                msg_type = disklavier.get_message_type_name(message)
+                note_info = ""
 
-            print(f"📥 {msg_type}: {message}{note_info} (Δt={delta_time:.3f}s)")
+                # Add note name for note messages
+                if len(message) >= 3 and (message[0] & 0xF0) in [0x80, 0x90]:
+                    note_name = get_note_name(message[1])
+                    velocity = message[2]
+                    note_info = f" | {note_name} vel={velocity}"
+                elif len(message) >= 3 and (message[0] & 0xF0) == 0xB0:
+                    value = message[2]
+                    note_info = f" | value={value}"
 
-        disklavier.set_callback(midi_callback)
+                print(f"📥 {msg_type}: {message}{note_info} (Δt={delta_time:.3f}s)")
 
-        print("\n🎵 MIDI Monitor Active")
-        if not args.include_system:
-            print("🚫 System messages filtered out (use --include-system to see all)")
+            disklavier.set_callback(midi_callback)
+
+        print(f"\n🎵 MIDI Monitor Active")
+        if disklavier.midi_in:
+            if not args.include_system:
+                print(
+                    "🚫 System messages filtered out (use --include-system to see all)"
+                )
+            else:
+                print("📡 All MIDI messages included (system timing messages visible)")
         else:
-            print("📡 All MIDI messages included (system timing messages visible)")
+            print("📝 No input device - monitoring disabled")
 
         print("📝 Command Menu:")
-        print("  1 = Middle C Note On (vel=60)")
-        print("  2 = Middle C Note Off")
-        print("  3 = Sustain Pedal Down")
-        print("  4 = Sustain Pedal Up")
-        print("  5 = Soft Pedal Down")
-        print("  6 = Soft Pedal Up")
+        if disklavier.midi_out:
+            print("  1 = Middle C Note On (vel=60)")
+            print("  2 = Middle C Note Off")
+            print("  3 = Sustain Pedal Down")
+            print("  4 = Sustain Pedal Up")
+            print("  5 = Soft Pedal Down")
+            print("  6 = Soft Pedal Up")
+        else:
+            print("  No output device - sending disabled")
         print("  q = Quit")
-        print("\nListening for MIDI input and keyboard commands...")
+
+        if disklavier.midi_in:
+            print("\nListening for MIDI input and keyboard commands...")
+        else:
+            print("\nReady for keyboard commands...")
 
         # Main command loop
         while True:
@@ -273,23 +340,41 @@ def main():
                 if command == "q" or command == "quit":
                     break
                 elif command == "1":
-                    print("🎵 Sending Middle C Note On (vel=60)")
-                    disklavier.send_note_on(60, 60)  # Middle C, velocity 60
+                    if disklavier.midi_out:
+                        print("🎵 Sending Middle C Note On (vel=60)")
+                        disklavier.send_note_on(60, 60)  # Middle C, velocity 60
+                    else:
+                        print("❌ No output device configured")
                 elif command == "2":
-                    print("🎵 Sending Middle C Note Off")
-                    disklavier.send_note_off(60)  # Middle C
+                    if disklavier.midi_out:
+                        print("🎵 Sending Middle C Note Off")
+                        disklavier.send_note_off(60)  # Middle C
+                    else:
+                        print("❌ No output device configured")
                 elif command == "3":
-                    print("🎵 Sending Sustain Pedal Down")
-                    disklavier.send_sustain_pedal(True)
+                    if disklavier.midi_out:
+                        print("🎵 Sending Sustain Pedal Down")
+                        disklavier.send_sustain_pedal(True)
+                    else:
+                        print("❌ No output device configured")
                 elif command == "4":
-                    print("🎵 Sending Sustain Pedal Up")
-                    disklavier.send_sustain_pedal(False)
+                    if disklavier.midi_out:
+                        print("🎵 Sending Sustain Pedal Up")
+                        disklavier.send_sustain_pedal(False)
+                    else:
+                        print("❌ No output device configured")
                 elif command == "5":
-                    print("🎵 Sending Soft Pedal Down")
-                    disklavier.send_soft_pedal(True)
+                    if disklavier.midi_out:
+                        print("🎵 Sending Soft Pedal Down")
+                        disklavier.send_soft_pedal(True)
+                    else:
+                        print("❌ No output device configured")
                 elif command == "6":
-                    print("🎵 Sending Soft Pedal Up")
-                    disklavier.send_soft_pedal(False)
+                    if disklavier.midi_out:
+                        print("🎵 Sending Soft Pedal Up")
+                        disklavier.send_soft_pedal(False)
+                    else:
+                        print("❌ No output device configured")
                 elif command == "":
                     continue  # Empty input, just continue
                 else:
