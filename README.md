@@ -170,6 +170,43 @@ if png_bytes:
         f.write(png_bytes)
 ```
 
+## Service Management
+
+The disklavier recording daemon can be set up as a systemd service to automatically start on boot and restart on failure. The service runs the daemon in a tmux session called `DISKLAVIER`.
+
+### Service Commands
+
+```bash
+# Check service status
+sudo systemctl status disklavier.service
+
+# Stop the service
+sudo systemctl stop disklavier.service
+
+# Start the service
+sudo systemctl start disklavier.service
+
+# Restart the service
+sudo systemctl restart disklavier.service
+
+# View service logs
+sudo journalctl -u disklavier.service -f
+
+# Connect to the tmux session to see live output
+tmux attach -t DISKLAVIER
+
+# List running tmux sessions
+tmux list-sessions
+```
+
+### Service Installation
+
+The service is configured to:
+- Start automatically on boot
+- Restart on failure with a 10-second delay
+- Run in a dedicated tmux session for easy monitoring
+- Save recordings to the default cache directory
+
 ## Interactive Testing
 
 For interactive testing and device exploration:
