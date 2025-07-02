@@ -3,6 +3,7 @@ import pathlib
 from typing import Iterator
 
 LIB_DIR = pathlib.Path(__file__).parent
+REPO_DIR = LIB_DIR.parent
 
 if "DISKLAVIER_CACHE_DIR" in os.environ:
     CACHE_DIR = pathlib.Path(os.environ["DISKLAVIER_CACHE_DIR"])

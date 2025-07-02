@@ -377,8 +377,9 @@ function createRecordingItem(recording) {
         </div>
         <div class="recording-actions">
             <button class="play-btn">▶️ Play</button>
-            <button class="download-btn">📥 Download</button>
             <button class="share-btn">🔗 Share</button>
+            <button class="download-btn">📥 Download MIDI</button>
+            <button class="download-mp3-btn">🎵 Download MP3</button>
         </div>
     `;
 
@@ -386,6 +387,7 @@ function createRecordingItem(recording) {
     const playButton = item.querySelector('.play-btn');
     const downloadButton = item.querySelector('.download-btn');
     const shareButton = item.querySelector('.share-btn');
+    const downloadMp3Button = item.querySelector('.download-mp3-btn');
 
     playButton.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -406,6 +408,11 @@ function createRecordingItem(recording) {
     shareButton.addEventListener('click', (e) => {
         e.stopPropagation();
         shareRecording(recording);
+    });
+
+    downloadMp3Button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        downloadMp3(recording);
     });
 
     // Make the whole item clickable to play
@@ -533,6 +540,46 @@ async function shareRecording(recording) {
         shareUrl.searchParams.set('date', selectedDate);
         shareUrl.searchParams.set('file', recording.filename);
         prompt('Copy this link to share:', shareUrl.toString());
+    }
+}
+
+
+// Download MP3 version of a recording
+async function downloadMp3(recording) {
+    try {
+        // Show loading state with custom message
+        showLoading('Rendering MP3...');
+        
+        // Make request to convert MIDI to MP3
+        const response = await fetch(`/api/convert-to-mp3/${recording.filename}`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to convert to MP3: ${response.statusText}`);
+        }
+        
+        // Get the MP3 blob
+        const blob = await response.blob();
+        
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = recording.filename.replace('.mid', '.mp3');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the blob URL
+        URL.revokeObjectURL(url);
+        
+        hideLoading();
+        
+    } catch (error) {
+        console.error('Failed to download MP3:', error);
+        alert('Failed to convert to MP3. Please try again.');
+        hideLoading();
     }
 }
 
@@ -705,13 +752,21 @@ function parseEasternDate(dateStr) {
     return new Date(year, month - 1, day, 12, 0, 0);
 }
 
-// Show loading overlay
-function showLoading() {
+// Show loading overlay with optional custom message
+function showLoading(message = 'Loading recordings...') {
+    const loadingText = loading.querySelector('p');
+    if (loadingText) {
+        loadingText.textContent = message;
+    }
     loading.classList.remove('hidden');
 }
 
-// Hide loading overlay
+// Hide loading overlay and reset message
 function hideLoading() {
+    const loadingText = loading.querySelector('p');
+    if (loadingText) {
+        loadingText.textContent = 'Loading recordings...';
+    }
     loading.classList.add('hidden');
 }
 
