@@ -4,18 +4,22 @@ Serves the MIDI recording browser and player.
 """
 
 import datetime
-import io
 import zoneinfo
+import io
 from pathlib import Path
 from typing import List, Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse, Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+import pretty_midi
+import soundfile as sf
+import numpy as np
+
 from ..activity import parse_recording_filename, get_daily_activity_data
-from ..paths import iter_midi_recordings
+from ..paths import REPO_DIR, iter_midi_recordings
 from .utils import burn_midi_sustain
 
 
@@ -172,6 +176,55 @@ async def download_midi_file(filename: str):
             )
 
     raise HTTPException(status_code=404, detail="MIDI file not found")
+
+
+@app.post("/api/convert-to-mp3/{filename}")
+async def convert_midi_to_mp3(filename: str):
+    """Convert a MIDI file to MP3 using FluidSynth and return for download"""
+
+    # Find the file in the recordings
+    recording_path = None
+    for path in iter_midi_recordings():
+        if path.name == filename:
+            recording_path = path
+            break
+
+    if recording_path is None or not recording_path.exists():
+        raise HTTPException(status_code=404, detail="MIDI file not found")
+
+    # Load MIDI file using pretty_midi
+    midi_data = pretty_midi.PrettyMIDI(str(recording_path))
+
+    # Path to SoundFont file
+    sf2_path = str(REPO_DIR / "SalC5Light2.sf2")
+
+    if not Path(sf2_path).exists():
+        raise HTTPException(
+            status_code=500, detail=f"SoundFont file not found: {sf2_path}"
+        )
+
+    # Synthesize audio using FluidSynth
+    # Sample rate of 44.1kHz is standard for MP3
+    sample_rate = 44100
+    audio = midi_data.fluidsynth(fs=sample_rate, sf2_path=sf2_path).astype(np.float32)
+
+    # Write audio directly to MP3 format using soundfile
+    mp3_buffer = io.BytesIO()
+    sf.write(mp3_buffer, audio, sample_rate, format="MP3")
+    mp3_buffer.seek(0)
+    mp3_data = mp3_buffer.getvalue()
+
+    # Return MP3 file
+    mp3_filename = filename.replace(".mid", ".mp3")
+
+    return StreamingResponse(
+        io.BytesIO(mp3_data),
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": f"attachment; filename={mp3_filename}",
+            "Content-Length": str(len(mp3_data)),
+        },
+    )
 
 
 def format_duration(seconds: float) -> str:
