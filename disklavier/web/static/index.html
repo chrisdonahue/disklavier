@@ -10,7 +10,7 @@
     <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
     
     <!-- Styles -->
-    <link rel="stylesheet" href="/static/styles.css?v=2.2">
+    <link rel="stylesheet" href="/static/styles.css?v=2.3">
 </head>
 <body>
     <div class="container">
@@ -51,10 +51,8 @@
         <!-- Piano Player Section -->
         <section class="piano-section" id="pianoSection" style="display: none;">
             <div class="player-container">
-                <h2>Piano Player</h2>
-                
                 <!-- Current track info -->
-                <div class="track-info" id="trackInfo">
+                <div class="track-info" id="trackInfo" style="display: none;">
                     <span id="trackName">Select a recording to play</span>
                     <span id="trackDetails"></span>
                 </div>
@@ -75,7 +73,7 @@
                 </div>
 
                 <!-- Player Controls -->
-                <div class="player-controls">
+                <div class="player-controls" style="display: none;">
                     <button id="playBtn" disabled>▶️ Play</button>
                     <button id="pauseBtn" disabled hidden>⏸️ Pause</button>
                     <button id="stopBtn" disabled>⏸️ Pause</button>
@@ -129,6 +127,6 @@
     </div>
 
     <!-- JavaScript -->
-    <script src="/static/script.js?v=2.2"></script>
+    <script src="/static/script.js?v=2.3"></script>
 </body>
 </html> 

@@ -453,7 +453,7 @@ async function playRecording(recording) {
         const recordingItems = document.querySelectorAll('.recording-item');
         const formattedTime = formatTime12Hour(recording.time);
         recordingItems.forEach(item => {
-            if (item.querySelector('.recording-time').textContent === formattedTime) {
+            if (item.querySelector('.recording-time').textContent === `🕒 ${formattedTime}`) {
                 item.classList.add('playing');
             }
         });
