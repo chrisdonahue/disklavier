@@ -68,6 +68,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     
+    // iOS Safari audio fix: Initialize audio context on first user interaction
+    setupiOSAudioFix();
+    
     setupEventListeners();
     await loadRecordings();
     renderCalendar();
@@ -77,6 +80,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     hideLoading();
 });
+
+// iOS Safari audio context fix
+function setupiOSAudioFix() {
+    let audioContextInitialized = false;
+    
+    // Function to initialize audio context on iOS
+    const initializeAudioContext = async () => {
+        if (audioContextInitialized) return;
+        
+        try {
+            // Resume any suspended audio contexts (iOS Safari requirement)
+            if (window.Tone && window.Tone.context && window.Tone.context.state === 'suspended') {
+                await window.Tone.context.resume();
+                console.log('🎵 Audio context resumed for iOS');
+            }
+            
+            // Try to access the audio context through the MIDI player
+            if (midiPlayer && midiPlayer.player && midiPlayer.player._audioContext) {
+                const ctx = midiPlayer.player._audioContext;
+                if (ctx.state === 'suspended') {
+                    await ctx.resume();
+                    console.log('🎵 MIDI player audio context resumed for iOS');
+                }
+            }
+            
+            audioContextInitialized = true;
+            
+            // Remove the event listeners once initialized
+            document.removeEventListener('touchstart', initializeAudioContext);
+            document.removeEventListener('touchend', initializeAudioContext);
+            document.removeEventListener('click', initializeAudioContext);
+            
+        } catch (error) {
+            console.error('Failed to initialize audio context:', error);
+        }
+    };
+    
+    // Add event listeners for user interactions (required for iOS)
+    document.addEventListener('touchstart', initializeAudioContext);
+    document.addEventListener('touchend', initializeAudioContext);
+    document.addEventListener('click', initializeAudioContext);
+}
 
 // Setup event listeners
 function setupEventListeners() {
@@ -101,9 +146,17 @@ function setupEventListeners() {
     });
 
     // Player controls
-    playBtn.addEventListener('click', () => {
+    playBtn.addEventListener('click', async () => {
         if (midiPlayer && currentRecording) {
-            midiPlayer.start();
+            try {
+                // Ensure audio context is ready before playing (especially important for iOS)
+                await ensureAudioContextReady();
+                midiPlayer.start();
+                hidePlayPrompt(); // Hide any play prompt that might be showing
+            } catch (error) {
+                console.error('Failed to start playback:', error);
+                alert('Unable to start audio playback. Please try again.');
+            }
         }
     });
 
@@ -299,8 +352,14 @@ function createRecordingItem(recording) {
     const playButton = item.querySelector('.play-btn');
     const downloadButton = item.querySelector('.download-btn');
 
-    playButton.addEventListener('click', (e) => {
+    playButton.addEventListener('click', async (e) => {
         e.stopPropagation();
+        // Ensure audio context is ready for iOS
+        try {
+            await ensureAudioContextReady();
+        } catch (error) {
+            console.warn('Audio context preparation failed:', error);
+        }
         playRecording(recording);
     });
 
@@ -310,7 +369,13 @@ function createRecordingItem(recording) {
     });
 
     // Make the whole item clickable to play
-    item.addEventListener('click', () => {
+    item.addEventListener('click', async () => {
+        // Ensure audio context is ready for iOS
+        try {
+            await ensureAudioContextReady();
+        } catch (error) {
+            console.warn('Audio context preparation failed:', error);
+        }
         playRecording(recording);
     });
 
@@ -343,7 +408,7 @@ async function playRecording(recording) {
         const midiUrl = `/api/midi/${recording.filename}`;
         
         // Wait for the MIDI file to be fully loaded before starting
-        const onMidiLoaded = () => {
+        const onMidiLoaded = async () => {
             currentRecording = recording;
             
             // Show the piano player section
@@ -359,8 +424,23 @@ async function playRecording(recording) {
                 block: 'start' 
             });
             
-            // Auto-start playback now that it's loaded
-            midiPlayer.start();
+            // Don't auto-start on iOS Safari due to audio policy restrictions
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            if (!isIOS) {
+                // Auto-start playback on desktop/non-iOS devices
+                try {
+                    // Ensure audio context is ready before playing
+                    await ensureAudioContextReady();
+                    midiPlayer.start();
+                } catch (error) {
+                    console.log('Auto-play failed (likely due to browser policy):', error);
+                    // Show a message to the user
+                    showPlayPrompt();
+                }
+            } else {
+                // On iOS, show a prompt to the user to manually start playback
+                showPlayPrompt();
+            }
             
             // Remove the event listener
             midiPlayer.removeEventListener('load', onMidiLoaded);
@@ -392,12 +472,73 @@ function downloadRecording(recording) {
 
 
 
+// Ensure audio context is ready for playback (iOS fix)
+async function ensureAudioContextReady() {
+    try {
+        // Resume Tone.js audio context if suspended
+        if (window.Tone && window.Tone.context && window.Tone.context.state === 'suspended') {
+            await window.Tone.context.resume();
+            console.log('🎵 Tone.js audio context resumed');
+        }
+        
+        // Resume MIDI player audio context if suspended
+        if (midiPlayer && midiPlayer.player && midiPlayer.player._audioContext) {
+            const ctx = midiPlayer.player._audioContext;
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+                console.log('🎵 MIDI player audio context resumed');
+            }
+        }
+    } catch (error) {
+        console.error('Failed to ensure audio context is ready:', error);
+        throw error;
+    }
+}
+
+// Show play prompt for iOS users
+function showPlayPrompt() {
+    // Check if prompt already exists
+    let prompt = document.getElementById('iosPlayPrompt');
+    if (!prompt) {
+        prompt = document.createElement('div');
+        prompt.id = 'iosPlayPrompt';
+        prompt.innerHTML = `
+            <div style="
+                background: #007AFF; 
+                color: white; 
+                padding: 12px 20px; 
+                border-radius: 8px; 
+                margin: 10px 0; 
+                text-align: center;
+                font-size: 14px;
+                box-shadow: 0 2px 10px rgba(0,122,255,0.3);
+            ">
+                🎵 Tap the Play button to start audio playback
+            </div>
+        `;
+        
+        // Insert after track info
+        const trackInfo = document.getElementById('trackInfo');
+        trackInfo.parentNode.insertBefore(prompt, trackInfo.nextSibling);
+    }
+    prompt.style.display = 'block';
+}
+
+// Hide play prompt
+function hidePlayPrompt() {
+    const prompt = document.getElementById('iosPlayPrompt');
+    if (prompt) {
+        prompt.style.display = 'none';
+    }
+}
+
 // Update player controls based on playback state
 function updatePlayerControls(isPlaying) {
     if (isPlaying) {
         playBtn.disabled = true;
         pauseBtn.disabled = false;
         stopBtn.disabled = false;
+        hidePlayPrompt(); // Hide prompt when playing
     } else {
         playBtn.disabled = false;
         pauseBtn.disabled = true;
