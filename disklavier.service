@@ -1,5 +1,5 @@
 [Unit]
-Description=Disklavier Recording Service
+Description=Disklavier Recording and Web Service
 After=network.target
 
 [Service]
@@ -8,7 +8,10 @@ User=chrisdonahue
 WorkingDirectory=/home/chrisdonahue/Code/disklavier
 Environment=TMUX_TMPDIR=/tmp
 ExecStart=/usr/bin/tmux new-session -d -s DISKLAVIER
-ExecStartPost=/usr/bin/tmux send-keys -t DISKLAVIER:0.0 'source .venv/bin/activate && python -m disklavier.record' C-m
+ExecStartPost=/usr/bin/tmux split-window -h -t DISKLAVIER
+ExecStartPost=/usr/bin/tmux split-window -v -t DISKLAVIER:0.1
+ExecStartPost=/usr/bin/tmux send-keys -t DISKLAVIER:0.0 'source .venv/bin/activate && disklavier-record' C-m
+ExecStartPost=/usr/bin/tmux send-keys -t DISKLAVIER:0.1 'source .venv/bin/activate && disklavier-web --port=11000' C-m
 ExecStop=/usr/bin/tmux kill-session -t DISKLAVIER
 RemainAfterExit=yes
 Restart=on-failure
