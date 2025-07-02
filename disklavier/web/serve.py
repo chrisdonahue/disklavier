@@ -60,6 +60,10 @@ async def get_recordings():
 
         timestamp, duration, note_count = parsed
 
+        # Filter out MIDI files with only one note
+        if note_count <= 1:
+            continue
+
         # Convert timestamp to US East Coast date string
         eastern_tz = zoneinfo.ZoneInfo("America/New_York")
         date_obj = datetime.datetime.fromtimestamp(timestamp, tz=eastern_tz)
@@ -93,6 +97,11 @@ async def get_recordings_by_date():
             continue
 
         timestamp, duration, note_count = parsed
+
+        # Filter out MIDI files with only one note
+        if note_count <= 1:
+            continue
+
         eastern_tz = zoneinfo.ZoneInfo("America/New_York")
         date_obj = datetime.datetime.fromtimestamp(timestamp, tz=eastern_tz)
         date_str = date_obj.strftime("%Y-%m-%d")
