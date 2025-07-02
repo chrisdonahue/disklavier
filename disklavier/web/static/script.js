@@ -127,19 +127,28 @@ function setupiOSAudioFix() {
 function setupEventListeners() {
     // Calendar controls
     prevMonthBtn.addEventListener('click', () => {
+        // Don't allow going back before March 2025
+        if (prevMonthBtn.disabled) {
+            return; // Exit if button is disabled
+        }
+        
         currentDate.setMonth(currentDate.getMonth() - 1);
         renderCalendar();
     });
 
     nextMonthBtn.addEventListener('click', () => {
+        // Don't allow going beyond the current month
+        if (nextMonthBtn.disabled) {
+            return; // Exit if button is disabled
+        }
+        
         currentDate.setMonth(currentDate.getMonth() + 1);
         renderCalendar();
     });
 
     todayBtn.addEventListener('click', () => {
-        // Get current date in Eastern timezone
-        const now = new Date();
-        const todayEastern = new Date(now.toLocaleString("en-US", {timeZone: EASTERN_TZ}));
+        // Get current date in Eastern timezone (regardless of user's timezone)
+        const todayEastern = getCurrentEasternDate();
         currentDate = new Date(todayEastern.getFullYear(), todayEastern.getMonth(), 1); // First of current month
         renderCalendar();
         selectDate(formatDate(todayEastern));
@@ -218,6 +227,20 @@ function renderCalendar() {
         month: 'long', 
         year: 'numeric' 
     });
+
+    // Enable/disable navigation buttons based on date limits
+    const earliestDate = new Date(2025, 2, 1); // March 2025 (month is 0-indexed)
+    const currentMonthDate = new Date(year, month, 1);
+    
+    // Get current month in Eastern timezone (always US East Coast, regardless of user's timezone)
+    const nowEastern = getCurrentEasternDate();
+    const currentRealMonth = new Date(nowEastern.getFullYear(), nowEastern.getMonth(), 1);
+    
+    // Disable previous month if at earliest allowed date (March 2025)
+    prevMonthBtn.disabled = currentMonthDate <= earliestDate;
+    
+    // Disable next month if at current month
+    nextMonthBtn.disabled = currentMonthDate >= currentRealMonth;
 
     // Clear calendar grid
     calendarGrid.innerHTML = '';
@@ -548,6 +571,39 @@ function updatePlayerControls(isPlaying) {
 
 // US East Coast timezone for all date/time operations
 const EASTERN_TZ = 'America/New_York';
+
+// Get current date/time in Eastern timezone, regardless of user's local timezone
+function getCurrentEasternDate() {
+    const now = new Date();
+    
+    // Use Intl.DateTimeFormat to get Eastern timezone components
+    const easternFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: EASTERN_TZ,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false
+    });
+    
+    const parts = easternFormatter.formatToParts(now);
+    const partsMap = {};
+    parts.forEach(part => {
+        partsMap[part.type] = parseInt(part.value);
+    });
+    
+    // Create a new Date object with Eastern timezone values
+    return new Date(
+        partsMap.year,
+        partsMap.month - 1, // JavaScript months are 0-indexed
+        partsMap.day,
+        partsMap.hour,
+        partsMap.minute,
+        partsMap.second
+    );
+}
 
 // Format date as YYYY-MM-DD using US East Coast timezone
 function formatDate(date) {

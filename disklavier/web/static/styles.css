@@ -167,9 +167,15 @@ midi-player {
     transition: all 0.3s ease;
 }
 
-.calendar-controls button:hover {
+.calendar-controls button:hover:not(:disabled) {
     background: #1e3c72;
     transform: translateY(-2px);
+}
+
+.calendar-controls button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: #ccc;
 }
 
 #currentMonth {
