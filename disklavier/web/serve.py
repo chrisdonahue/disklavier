@@ -6,8 +6,8 @@ Serves the MIDI recording browser and player.
 import datetime
 import zoneinfo
 import io
+import html
 from pathlib import Path
-from typing import List, Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -18,7 +18,7 @@ import pretty_midi
 import soundfile as sf
 import numpy as np
 
-from ..activity import parse_recording_filename, get_daily_activity_data
+from ..activity import parse_recording_filename
 from ..paths import REPO_DIR, iter_midi_recordings
 from .utils import burn_midi_sustain
 
@@ -42,14 +42,73 @@ app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
-async def read_index():
-    """Serve the main page"""
+async def read_index(date: str = None, file: str = None):
+    """Serve the main page with dynamic metadata for shared recordings"""
     index_path = static_path / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="Index page not found")
 
     with open(index_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+        html_content = f.read()
+
+    # If this is a shared recording link, customize the metadata
+    if date and file:
+        try:
+            # Find the recording metadata
+            for recording_path in iter_midi_recordings():
+                if recording_path.name == file:
+                    parsed = parse_recording_filename(recording_path)
+                    if parsed is None:
+                        break
+
+                    timestamp, duration, note_count = parsed
+
+                    # Format date and time
+                    eastern_tz = zoneinfo.ZoneInfo("America/New_York")
+                    date_obj = datetime.datetime.fromtimestamp(timestamp, tz=eastern_tz)
+                    formatted_date = date_obj.strftime("%A, %B %d, %Y")
+                    formatted_time = date_obj.strftime("%I:%M:%S %p").lstrip("0")
+                    formatted_duration = format_duration(duration)
+
+                    # Create custom metadata with HTML escaping
+                    custom_title = (
+                        f"Piano Recording - {formatted_date} at {formatted_time}"
+                    )
+                    custom_description = f"Listen to this {formatted_duration} piano recording ({note_count:,} notes) from Chris's Disklavier database. Recorded on {formatted_date} at {formatted_time}. Browse more recordings and play with interactive piano roll visualization."
+
+                    # HTML escape the content to prevent XSS
+                    escaped_title = html.escape(custom_title, quote=True)
+                    escaped_description = html.escape(custom_description, quote=True)
+
+                    # Replace metadata in HTML
+                    html_content = html_content.replace(
+                        '<meta property="og:title" content="Chris\'s Piano Database">',
+                        f'<meta property="og:title" content="{escaped_title}">',
+                    )
+                    html_content = html_content.replace(
+                        '<meta property="og:description" content="Candid piano recordings from a Yamaha Disklavier. Mostly classical, some pop and improv. Browse by date and listen with interactive piano roll visualization.">',
+                        f'<meta property="og:description" content="{escaped_description}">',
+                    )
+                    html_content = html_content.replace(
+                        '<meta name="twitter:title" content="Chris\'s Piano Database">',
+                        f'<meta name="twitter:title" content="{escaped_title}">',
+                    )
+                    html_content = html_content.replace(
+                        '<meta name="twitter:description" content="Candid piano recordings from a Yamaha Disklavier. Mostly classical, some pop and improv. Browse by date and listen with interactive piano roll visualization.">',
+                        f'<meta name="twitter:description" content="{escaped_description}">',
+                    )
+                    html_content = html_content.replace(
+                        "<title>Chris's Piano DB</title>",
+                        f"<title>{html.escape(custom_title)} - Chris's Piano DB</title>",
+                    )
+                    break
+
+        except Exception as e:
+            # If anything goes wrong, just serve the default page
+            print(f"Error customizing metadata for shared recording: {e}")
+            pass
+
+    return HTMLResponse(content=html_content)
 
 
 @app.get("/api/recordings")

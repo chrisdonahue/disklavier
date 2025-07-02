@@ -791,6 +791,32 @@ function getMonthName(monthIndex) {
     return months[monthIndex];
 }
 
+// Update social media metadata with detailed recording information
+function updateSocialMetadataWithRecording(recording, shareDate) {
+    const dateObj = parseEasternDate(shareDate);
+    const formattedDate = dateObj.toLocaleDateString('en-US', { 
+        weekday: 'long',
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    });
+    
+    const formattedTime = formatTime12Hour(recording.time);
+    const customTitle = `Piano Recording - ${formattedDate} at ${formattedTime}`;
+    const customDescription = `Listen to this ${recording.formatted_duration} piano recording (${recording.note_count.toLocaleString()} notes) from Chris's Disklavier database. Recorded on ${formattedDate} at ${formattedTime}. Browse more recordings and play with interactive piano roll visualization.`;
+    
+    // Update Open Graph tags
+    document.querySelector('meta[property="og:title"]').setAttribute('content', customTitle);
+    document.querySelector('meta[property="og:description"]').setAttribute('content', customDescription);
+    
+    // Update Twitter tags
+    document.querySelector('meta[name="twitter:title"]').setAttribute('content', customTitle);
+    document.querySelector('meta[name="twitter:description"]').setAttribute('content', customDescription);
+    
+    // Update page title
+    document.title = customTitle + ' - Chris\'s Piano DB';
+}
+
 // Handle shared recording link by navigating to date and auto-playing file
 async function handleSharedRecording(shareDate, shareFile) {
     try {
@@ -804,6 +830,9 @@ async function handleSharedRecording(shareDate, shareFile) {
             autoSelectMostRecentDate();
             return;
         }
+        
+        // Update social metadata with detailed recording information
+        updateSocialMetadataWithRecording(targetRecording, shareDate);
         
         // Navigate to the correct month containing this date
         const dateObj = parseEasternDate(shareDate);
@@ -819,10 +848,13 @@ async function handleSharedRecording(shareDate, shareFile) {
                 await ensureAudioContextReady();
                 await playRecording(targetRecording);
                 
-                // Clean up URL parameters after successful load
+                // Clean up URL parameters and reset title after successful load
                 const cleanUrl = new URL(window.location.href);
                 cleanUrl.search = '';
-                window.history.replaceState({}, document.title, cleanUrl.toString());
+                window.history.replaceState({}, '', cleanUrl.toString());
+                
+                // Reset page title to normal
+                document.title = "Chris's Piano DB";
                 
             } catch (error) {
                 console.error('Failed to auto-play shared recording:', error);

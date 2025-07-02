@@ -6,11 +6,31 @@
     <title>Chris's Piano DB</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎹</text></svg>">
     
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="">
+    <meta property="og:title" content="Chris's Piano Database">
+    <meta property="og:description" content="Candid piano recordings from a Yamaha Disklavier. Mostly classical, some pop and improv. Browse by date and listen with interactive piano roll visualization.">
+    <meta property="og:site_name" content="Chris's Piano DB">
+    <!-- <meta property="og:image" content=""> Add an image URL here for better social sharing -->
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="">
+    <meta name="twitter:title" content="Chris's Piano Database">
+    <meta name="twitter:description" content="Candid piano recordings from a Yamaha Disklavier. Mostly classical, some pop and improv. Browse by date and listen with interactive piano roll visualization.">
+    <!-- <meta name="twitter:image" content=""> Add an image URL here for better social sharing -->
+    
+    <!-- General Meta -->
+    <meta name="description" content="Archive of MIDI piano performances recorded on a Yamaha Disklavier. Features candid, unpolished recordings of classical piano music, pop covers, and improvisations with interactive piano roll playback.">
+    <meta name="author" content="Chris Donahue">
+    <meta name="keywords" content="piano, MIDI, classical music, Disklavier, Yamaha, piano recordings, music database">
+    
     <!-- HTML MIDI Player dependencies -->
     <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
     
     <!-- Styles -->
-    <link rel="stylesheet" href="/static/styles.css?v=2.3">
+    <link rel="stylesheet" href="/static/styles.css?v=2.4">
 </head>
 <body>
     <div class="container">
@@ -127,6 +147,54 @@
     </div>
 
     <!-- JavaScript -->
-    <script src="/static/script.js?v=2.3"></script>
+    <script>
+        // Set dynamic meta tags for social sharing
+        function updateSocialMetadata() {
+            const currentUrl = window.location.href;
+            const urlParams = new URLSearchParams(window.location.search);
+            const shareDate = urlParams.get('date');
+            const shareFile = urlParams.get('file');
+            
+            // Update URL meta tags
+            document.querySelector('meta[property="og:url"]').setAttribute('content', currentUrl);
+            document.querySelector('meta[name="twitter:url"]').setAttribute('content', currentUrl);
+            
+            // If this is a shared recording link, customize the metadata
+            if (shareDate && shareFile) {
+                const dateObj = new Date(shareDate + 'T12:00:00'); // Parse as noon to avoid timezone issues
+                const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                    weekday: 'long',
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+                
+                // Extract time from filename (format: DDmonYY-HHMMSSPM-etc.mid)
+                const timeMatch = shareFile.match(/\d{6}([AP]M)/);
+                const timeStr = timeMatch ? ` at ${shareFile.substring(8, 10)}:${shareFile.substring(10, 12)}:${shareFile.substring(12, 14)} ${timeMatch[1]}` : '';
+                
+                const customTitle = `Piano Recording - ${formattedDate}${timeStr}`;
+                const customDescription = `Listen to this piano recording from Chris's Disklavier database. Recorded on ${formattedDate}${timeStr}. Browse more recordings and play with interactive piano roll visualization.`;
+                
+                // Update Open Graph tags
+                document.querySelector('meta[property="og:title"]').setAttribute('content', customTitle);
+                document.querySelector('meta[property="og:description"]').setAttribute('content', customDescription);
+                
+                // Update Twitter tags
+                document.querySelector('meta[name="twitter:title"]').setAttribute('content', customTitle);
+                document.querySelector('meta[name="twitter:description"]').setAttribute('content', customDescription);
+                
+                // Update page title
+                document.title = customTitle + ' - Chris\'s Piano DB';
+            }
+        }
+        
+        // Update metadata as early as possible
+        updateSocialMetadata();
+        
+        // Also update when DOM is ready in case of any timing issues
+        document.addEventListener('DOMContentLoaded', updateSocialMetadata);
+    </script>
+    <script src="/static/script.js?v=2.4"></script>
 </body>
 </html> 
