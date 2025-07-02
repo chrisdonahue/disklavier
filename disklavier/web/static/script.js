@@ -75,8 +75,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadRecordings();
     renderCalendar();
     
-    // Automatically select the most recent date with recordings
-    autoSelectMostRecentDate();
+    // Check for shared recording link parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareDate = urlParams.get('date');
+    const shareFile = urlParams.get('file');
+    
+    if (shareDate && shareFile) {
+        // Handle shared recording link
+        await handleSharedRecording(shareDate, shareFile);
+    } else {
+        // Automatically select the most recent date with recordings
+        autoSelectMostRecentDate();
+    }
     
     hideLoading();
 });
@@ -367,6 +377,7 @@ function createRecordingItem(recording) {
         </div>
         <div class="recording-actions">
             <button class="play-btn">▶️ Play</button>
+            <button class="share-btn">🔗 Share</button>
             <button class="download-btn">📥 Download MIDI</button>
             <button class="download-mp3-btn">🎵 Download MP3</button>
         </div>
@@ -375,6 +386,7 @@ function createRecordingItem(recording) {
     // Add event listeners
     const playButton = item.querySelector('.play-btn');
     const downloadButton = item.querySelector('.download-btn');
+    const shareButton = item.querySelector('.share-btn');
     const downloadMp3Button = item.querySelector('.download-mp3-btn');
 
     playButton.addEventListener('click', async (e) => {
@@ -391,6 +403,11 @@ function createRecordingItem(recording) {
     downloadButton.addEventListener('click', (e) => {
         e.stopPropagation();
         downloadRecording(recording);
+    });
+
+    shareButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        shareRecording(recording);
     });
 
     downloadMp3Button.addEventListener('click', (e) => {
@@ -500,6 +517,33 @@ function downloadRecording(recording) {
     document.body.removeChild(link);
 }
 
+// Share a recording by copying a direct link to clipboard
+async function shareRecording(recording) {
+    try {
+        // Get the date for this recording from selectedDate
+        const shareUrl = new URL(window.location.href);
+        shareUrl.search = ''; // Clear existing parameters
+        shareUrl.searchParams.set('date', selectedDate);
+        shareUrl.searchParams.set('file', recording.filename);
+        
+        // Copy to clipboard
+        await navigator.clipboard.writeText(shareUrl.toString());
+        
+        // Show success feedback
+        showShareSuccess();
+        
+    } catch (error) {
+        console.error('Failed to copy to clipboard:', error);
+        // Fallback: show the URL in a prompt for manual copying
+        const shareUrl = new URL(window.location.href);
+        shareUrl.search = '';
+        shareUrl.searchParams.set('date', selectedDate);
+        shareUrl.searchParams.set('file', recording.filename);
+        prompt('Copy this link to share:', shareUrl.toString());
+    }
+}
+
+
 // Download MP3 version of a recording
 async function downloadMp3(recording) {
     try {
@@ -601,6 +645,45 @@ function hidePlayPrompt() {
     }
 }
 
+// Show success message when share link is copied to clipboard
+function showShareSuccess() {
+    // Check if message already exists
+    let message = document.getElementById('shareSuccessMessage');
+    if (!message) {
+        message = document.createElement('div');
+        message.id = 'shareSuccessMessage';
+        message.innerHTML = `
+            <div style="
+                background: #28a745; 
+                color: white; 
+                padding: 12px 20px; 
+                border-radius: 8px; 
+                margin: 10px 0; 
+                text-align: center;
+                font-size: 14px;
+                box-shadow: 0 2px 10px rgba(40,167,69,0.3);
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 1000;
+                animation: slideIn 0.3s ease-out;
+            ">
+                🔗 Share link copied to clipboard!
+            </div>
+        `;
+        document.body.appendChild(message);
+    }
+    
+    message.style.display = 'block';
+    
+    // Hide after 3 seconds
+    setTimeout(() => {
+        if (message) {
+            message.style.display = 'none';
+        }
+    }, 3000);
+}
+
 // Update player controls based on playback state
 function updatePlayerControls(isPlaying) {
     if (isPlaying) {
@@ -694,6 +777,51 @@ function getMonthName(monthIndex) {
         'July', 'August', 'September', 'October', 'November', 'December'
     ];
     return months[monthIndex];
+}
+
+// Handle shared recording link by navigating to date and auto-playing file
+async function handleSharedRecording(shareDate, shareFile) {
+    try {
+        // Check if the date exists and has recordings
+        const recordings = recordingsByDate[shareDate] || [];
+        const targetRecording = recordings.find(r => r.filename === shareFile);
+        
+        if (!targetRecording) {
+            console.warn(`Shared recording not found: ${shareFile} on ${shareDate}`);
+            // Fall back to normal behavior
+            autoSelectMostRecentDate();
+            return;
+        }
+        
+        // Navigate to the correct month containing this date
+        const dateObj = parseEasternDate(shareDate);
+        currentDate = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
+        
+        // Re-render calendar for the correct month and select the date
+        renderCalendar();
+        selectDate(shareDate);
+        
+        // Wait a moment for the UI to update, then auto-play the recording
+        setTimeout(async () => {
+            try {
+                await ensureAudioContextReady();
+                await playRecording(targetRecording);
+                
+                // Clean up URL parameters after successful load
+                const cleanUrl = new URL(window.location.href);
+                cleanUrl.search = '';
+                window.history.replaceState({}, document.title, cleanUrl.toString());
+                
+            } catch (error) {
+                console.error('Failed to auto-play shared recording:', error);
+            }
+        }, 500); // Small delay to ensure UI is ready
+        
+    } catch (error) {
+        console.error('Error handling shared recording:', error);
+        // Fall back to normal behavior
+        autoSelectMostRecentDate();
+    }
 }
 
 // Automatically select the most recent date with recordings
