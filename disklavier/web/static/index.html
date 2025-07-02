@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chris's Piano</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎹</text></svg>">
+    
+    <!-- HTML MIDI Player dependencies -->
+    <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎹 Chris's Piano Database</h1>
+            <h3>Candid recordings from Yamaha Disklavier. Mostly classical, some pop and improv. All times are US East Coast.</h3>
+        </header>
+
+        <!-- Calendar Section -->
+        <section class="calendar-section">
+            <div class="calendar-container">
+                <h2>Recording Calendar</h2>
+                
+                <!-- Calendar Controls -->
+                <div class="calendar-controls">
+                    <button id="prevMonth">◀️</button>
+                    <span id="currentMonth"></span>
+                    <button id="nextMonth">▶️</button>
+                    <button id="todayBtn">Today</button>
+                </div>
+                
+                <!-- Calendar Grid -->
+                <div class="calendar-grid" id="calendarGrid">
+                    <!-- Calendar will be populated by JavaScript -->
+                </div>
+                
+                <!-- Selected Date Recordings -->
+                <div class="date-recordings" id="dateRecordings">
+                    <h3 id="selectedDateTitle">Select a date to view recordings</h3>
+                    <div class="recordings-list" id="recordingsList">
+                        <!-- Recordings for selected date will appear here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Piano Player Section -->
+        <section class="piano-section" id="pianoSection" style="display: none;">
+            <div class="player-container">
+                <h2>Piano Player</h2>
+                
+                <!-- Current track info -->
+                <div class="track-info" id="trackInfo">
+                    <span id="trackName">Select a recording to play</span>
+                    <span id="trackDetails"></span>
+                </div>
+                
+                <!-- MIDI Player and Visualizer -->
+                <div class="midi-player-container">
+                    <midi-player 
+                        id="midiPlayer"
+                        sound-font="https://storage.googleapis.com/magentadata/js/soundfonts/salamander"
+                        visualizer="#midiVisualizer">
+                    </midi-player>
+                    
+                    <midi-visualizer 
+                        type="piano-roll" 
+                        id="midiVisualizer"
+                        class="midi-visualizer">
+                    </midi-visualizer>
+                </div>
+
+                <!-- Player Controls -->
+                <div class="player-controls">
+                    <button id="playBtn" disabled>▶️ Play</button>
+                    <button id="pauseBtn" disabled>⏸️ Pause</button>
+                    <button id="stopBtn" disabled>⏹️ Stop</button>
+                    <button id="downloadBtn" disabled>📥 Download</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- About Section -->
+        <section class="about-section">
+            <div class="about-container">
+                <h2>About This Database</h2>
+                <div class="about-content">
+                    <p>
+                        This is a digital archive of piano performances primarily performed by <strong><a href="https://chrisdonahue.com">Chris Donahue</a></strong> and recorded on a <strong>Yamaha MX100II Disklavier</strong>, 
+                        an acoustic upright piano equipped with digital MIDI recording and playback capabilities.
+                    </p>
+
+                    <p>
+                        The Disklavier is connected to a Raspberry Pi rigged to start recording any time the piano is played. Ten seconds of inactivity will cause the recording to stop and write a MIDI file to disk. Accordingly, the <strong>recordings are candid, unpolished, and unedited</strong>. Recordings mainly consist of <strong>classical piano music</strong>, but also includes some pop covers and improvisations.
+                    </p>
+
+                    <p>
+                        All recordings are permissively licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC-BY-SA 4.0</a>. I eventually plan to periodically release data dumps as a datasetf or music information retrieval research, with a focus of capturing the process of learning classical repertoire. Contact Chris for a data dump of the entire collection.
+                    </p>
+                    
+                    <div class="tech-details">
+                        <h3>Technical Details</h3>
+                        <ul>
+                            <li><strong>Instrument:</strong> Yamaha MX100II Disklavier</li>
+                            <li><strong>Format:</strong> Standard MIDI Files (SMF)</li>
+                            <li><strong>Recording:</strong> High-resolution velocity and timing data</li>
+                            <li><strong>Processing:</strong> Sustain pedal effects integrated into note durations</li>
+                            <li><strong>Timezone:</strong> All timestamps in US Eastern Time</li>
+                        </ul>
+                    </div>
+                    
+                    <p class="about-footer">
+                        Browse the calendar above to explore recordings by date, or click any recording to hear 
+                        the performance through the interactive piano roll visualizer.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loading indicator -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading recordings...</p>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/static/script.js"></script>
+</body>
+</html> 
