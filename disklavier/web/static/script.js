@@ -361,19 +361,29 @@ function showRecordingsForDate(dateStr) {
     });
 }
 
+// Convert 24-hour time to 12-hour format with AM/PM
+function formatTime12Hour(time24) {
+    const [hours, minutes, seconds] = time24.split(':');
+    const hour24 = parseInt(hours);
+    const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    return `${hour12}:${minutes}:${seconds} ${ampm}`;
+}
+
 // Create a recording item element
 function createRecordingItem(recording) {
     const item = document.createElement('div');
     item.className = 'recording-item';
     
+    const formattedTime = formatTime12Hour(recording.time);
+    
     item.innerHTML = `
         <div class="recording-header">
-            <span class="recording-name">${recording.filename}</span>
-            <span class="recording-time">${recording.time}</span>
-        </div>
-        <div class="recording-details">
-            <span>Duration: ${recording.formatted_duration}</span>
-            <span>Notes: ${recording.note_count.toLocaleString()}</span>
+            <div class="recording-meta">
+                <span class="recording-time">🕒 ${formattedTime}</span>
+                <span class="recording-duration">⏱️ ${recording.formatted_duration}</span>
+                <span class="recording-notes">🎶 ${recording.note_count.toLocaleString()} notes</span>
+            </div>
         </div>
         <div class="recording-actions">
             <button class="play-btn">▶️ Play</button>
@@ -441,15 +451,17 @@ async function playRecording(recording) {
 
         // Highlight current recording
         const recordingItems = document.querySelectorAll('.recording-item');
+        const formattedTime = formatTime12Hour(recording.time);
         recordingItems.forEach(item => {
-            if (item.querySelector('.recording-name').textContent === recording.filename) {
+            if (item.querySelector('.recording-time').textContent === formattedTime) {
                 item.classList.add('playing');
             }
         });
 
         // Update track info
-        trackName.textContent = recording.filename;
-        trackDetails.textContent = `${recording.formatted_duration} • ${recording.note_count.toLocaleString()} notes • ${recording.time}`;
+        const formattedTimeForTitle = formatTime12Hour(recording.time);
+        trackName.textContent = `Piano Recording - ${formattedTimeForTitle}`;
+        trackDetails.textContent = `${recording.formatted_duration} • ${recording.note_count.toLocaleString()} notes`;
 
         // Load MIDI file into player
         const midiUrl = `/api/midi/${recording.filename}`;

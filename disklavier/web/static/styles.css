@@ -309,33 +309,37 @@ midi-player {
 }
 
 .recording-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 5px;
+    margin-bottom: 10px;
 }
 
-.recording-name {
-    font-weight: bold;
-    color: #2a5298;
+.recording-meta {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.recording-duration {
+    color: #666;
+    font-size: 0.9rem;
+    margin-right: 10px;
+}
+
+.recording-notes {
+    color: #666;
+    font-size: 0.9rem;
 }
 
 .recording-time {
-    color: #666;
-    font-size: 0.9rem;
-}
-
-.recording-details {
-    display: flex;
-    gap: 15px;
-    font-size: 0.9rem;
-    color: #666;
+    font-weight: bold;
+    color: #2a5298;
+    font-size: 1.2rem;
+    margin-right: 10px;
 }
 
 .recording-actions {
-    margin-top: 10px;
     display: flex;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
 .recording-actions button {
@@ -499,15 +503,10 @@ midi-player {
         font-size: 0.9rem;
     }
 
-    .recording-header {
+    .recording-meta {
         flex-direction: column;
         align-items: flex-start;
-        gap: 5px;
-    }
-
-    .recording-details {
-        flex-direction: column;
-        gap: 5px;
+        gap: 8px;
     }
 }
 
