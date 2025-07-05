@@ -384,7 +384,8 @@ midi-player {
     flex-wrap: wrap;
 }
 
-.recording-actions button {
+.recording-actions button,
+.recording-actions a {
     padding: 5px 10px;
     border: none;
     border-radius: 5px;
@@ -393,9 +394,12 @@ midi-player {
     font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
 }
 
-.recording-actions button:hover {
+.recording-actions button:hover,
+.recording-actions a:hover {
     background: #1e3c72;
 }
 

@@ -18,3 +18,15 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 def iter_midi_recordings() -> Iterator[pathlib.Path]:
     for file in sorted(RECORDINGS_DIR.glob("*.mid")):
         yield file
+
+
+def iter_midi_tags() -> Iterator[str]:
+    for file in iter_midi_recordings():
+        yield file.stem
+
+
+def get_midi_recording(tag: str) -> pathlib.Path:
+    path = RECORDINGS_DIR / f"{tag}.mid"
+    if not path.exists():
+        raise FileNotFoundError(f"MIDI recording not found: {tag}")
+    return path

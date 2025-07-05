@@ -175,11 +175,8 @@ function setupEventListeners() {
         }
     });
 
-    downloadBtn.addEventListener('click', () => {
-        if (currentRecording) {
-            downloadRecording(currentRecording);
-        }
-    });
+    // Download button is now handled directly in HTML as a link
+    // We'll update it dynamically when a recording is selected
 
     // MIDI output selection
     midiOutputSelect.addEventListener('change', (e) => {
@@ -411,16 +408,16 @@ function createRecordingItem(recording) {
         <div class="recording-actions">
             <button class="play-btn">▶️ Play</button>
             <button class="share-btn">🔗 Share</button>
-            <button class="download-btn">📥 Download MIDI</button>
-            <button class="download-mp3-btn">🎵 Download MP3</button>
+            <a href="/api/raw_midi/${recording.tag}.mid" download class="download-btn">📥 Download MIDI</a>
+            <a href="/api/preview_mp3/${recording.tag}.mp3" download class="download-mp3-btn">🎵 Download MP3</a>
         </div>
     `;
 
     // Add event listeners
     const playButton = item.querySelector('.play-btn');
-    const downloadButton = item.querySelector('.download-btn');
     const shareButton = item.querySelector('.share-btn');
-    const downloadMp3Button = item.querySelector('.download-mp3-btn');
+    const downloadMidiBtn = item.querySelector('.download-btn');
+    const downloadMp3Btn = item.querySelector('.download-mp3-btn');
 
     playButton.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -433,19 +430,18 @@ function createRecordingItem(recording) {
         playRecording(recording);
     });
 
-    downloadButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        downloadRecording(recording);
-    });
-
     shareButton.addEventListener('click', (e) => {
         e.stopPropagation();
         shareRecording(recording);
     });
 
-    downloadMp3Button.addEventListener('click', (e) => {
+    // Prevent download links from triggering the play action
+    downloadMidiBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        downloadMp3(recording);
+    });
+
+    downloadMp3Btn.addEventListener('click', (e) => {
+        e.stopPropagation();
     });
 
     // Make the whole item clickable to play
@@ -487,7 +483,7 @@ async function playRecording(recording) {
         trackDetails.textContent = `${recording.formatted_duration} • ${recording.note_count.toLocaleString()} notes`;
 
         // Load MIDI file into player
-        const midiUrl = `/api/midi/${recording.filename}`;
+        const midiUrl = `/api/player_midi/${recording.tag}.mid`;
         
         // Wait for the MIDI file to be fully loaded before starting
         const onMidiLoaded = async () => {
@@ -498,6 +494,8 @@ async function playRecording(recording) {
             
             playBtn.disabled = false;
             downloadBtn.disabled = false;
+            // Update download button href
+            downloadBtn.href = `/api/raw_midi/${recording.tag}.mid`;
             hideLoading();
             
             // Scroll to the piano player
@@ -541,16 +539,7 @@ async function playRecording(recording) {
     }
 }
 
-// Download a recording
-function downloadRecording(recording) {
-    const downloadUrl = `/api/download/${recording.filename}`;
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = recording.filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
+// Download functions removed - now handled by direct links
 
 // Share a recording by copying a direct link to clipboard
 async function shareRecording(recording) {
@@ -559,7 +548,7 @@ async function shareRecording(recording) {
         const shareUrl = new URL(window.location.href);
         shareUrl.search = ''; // Clear existing parameters
         shareUrl.searchParams.set('date', selectedDate);
-        shareUrl.searchParams.set('file', recording.filename);
+        shareUrl.searchParams.set('file', recording.tag);
         
         // Copy to clipboard
         await navigator.clipboard.writeText(shareUrl.toString());
@@ -573,50 +562,13 @@ async function shareRecording(recording) {
         const shareUrl = new URL(window.location.href);
         shareUrl.search = '';
         shareUrl.searchParams.set('date', selectedDate);
-        shareUrl.searchParams.set('file', recording.filename);
+        shareUrl.searchParams.set('file', recording.tag);
         prompt('Copy this link to share:', shareUrl.toString());
     }
 }
 
 
-// Download MP3 version of a recording
-async function downloadMp3(recording) {
-    try {
-        // Show loading state with custom message
-        showLoading('Rendering MP3...');
-        
-        // Make request to convert MIDI to MP3
-        const response = await fetch(`/api/convert-to-mp3/${recording.filename}`, {
-            method: 'POST'
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to convert to MP3: ${response.statusText}`);
-        }
-        
-        // Get the MP3 blob
-        const blob = await response.blob();
-        
-        // Create download link
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = recording.filename.replace('.mid', '.mp3');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // Clean up the blob URL
-        URL.revokeObjectURL(url);
-        
-        hideLoading();
-        
-    } catch (error) {
-        console.error('Failed to download MP3:', error);
-        alert('Failed to convert to MP3. Please try again.');
-        hideLoading();
-    }
-}
+
 
 
 
@@ -845,7 +797,7 @@ async function handleSharedRecording(shareDate, shareFile) {
     try {
         // Check if the date exists and has recordings
         const recordings = recordingsByDate[shareDate] || [];
-        const targetRecording = recordings.find(r => r.filename === shareFile);
+        const targetRecording = recordings.find(r => r.tag === shareFile);
         
         if (!targetRecording) {
             console.warn(`Shared recording not found: ${shareFile} on ${shareDate}`);

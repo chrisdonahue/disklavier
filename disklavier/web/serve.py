@@ -19,7 +19,7 @@ import soundfile as sf
 import numpy as np
 
 from ..activity import parse_recording_filename
-from ..paths import REPO_DIR, iter_midi_recordings
+from ..paths import REPO_DIR, iter_midi_tags, get_midi_recording
 from .utils import burn_midi_sustain
 
 
@@ -54,54 +54,49 @@ async def read_index(date: str = None, file: str = None):
     # If this is a shared recording link, customize the metadata
     if date and file:
         try:
-            # Find the recording metadata
-            for recording_path in iter_midi_recordings():
-                if recording_path.name == file:
-                    parsed = parse_recording_filename(recording_path)
-                    if parsed is None:
-                        break
+            # Find the recording metadata using tag
+            tag = file.replace(".mid", "") if file.endswith(".mid") else file
+            recording_path = get_midi_recording(tag)
+            parsed = parse_recording_filename(recording_path)
+            if parsed is not None:
+                timestamp, duration, note_count = parsed
 
-                    timestamp, duration, note_count = parsed
+                # Format date and time
+                eastern_tz = zoneinfo.ZoneInfo("America/New_York")
+                date_obj = datetime.datetime.fromtimestamp(timestamp, tz=eastern_tz)
+                formatted_date = date_obj.strftime("%A, %B %d, %Y")
+                formatted_time = date_obj.strftime("%I:%M:%S %p").lstrip("0")
+                formatted_duration = format_duration(duration)
 
-                    # Format date and time
-                    eastern_tz = zoneinfo.ZoneInfo("America/New_York")
-                    date_obj = datetime.datetime.fromtimestamp(timestamp, tz=eastern_tz)
-                    formatted_date = date_obj.strftime("%A, %B %d, %Y")
-                    formatted_time = date_obj.strftime("%I:%M:%S %p").lstrip("0")
-                    formatted_duration = format_duration(duration)
+                # Create custom metadata with HTML escaping
+                custom_title = f"Piano Recording - {formatted_date} at {formatted_time}"
+                custom_description = f"Listen to this {formatted_duration} piano recording ({note_count:,} notes) from Chris's Disklavier database. Recorded on {formatted_date} at {formatted_time}. Browse more recordings and play with interactive piano roll visualization."
 
-                    # Create custom metadata with HTML escaping
-                    custom_title = (
-                        f"Piano Recording - {formatted_date} at {formatted_time}"
-                    )
-                    custom_description = f"Listen to this {formatted_duration} piano recording ({note_count:,} notes) from Chris's Disklavier database. Recorded on {formatted_date} at {formatted_time}. Browse more recordings and play with interactive piano roll visualization."
+                # HTML escape the content to prevent XSS
+                escaped_title = html.escape(custom_title, quote=True)
+                escaped_description = html.escape(custom_description, quote=True)
 
-                    # HTML escape the content to prevent XSS
-                    escaped_title = html.escape(custom_title, quote=True)
-                    escaped_description = html.escape(custom_description, quote=True)
-
-                    # Replace metadata in HTML
-                    html_content = html_content.replace(
-                        '<meta property="og:title" content="Chris\'s Piano Database">',
-                        f'<meta property="og:title" content="{escaped_title}">',
-                    )
-                    html_content = html_content.replace(
-                        '<meta property="og:description" content="Candid piano recordings from a Yamaha Disklavier. Mostly classical, some pop and improv. Browse by date and listen with interactive piano roll visualization.">',
-                        f'<meta property="og:description" content="{escaped_description}">',
-                    )
-                    html_content = html_content.replace(
-                        '<meta name="twitter:title" content="Chris\'s Piano Database">',
-                        f'<meta name="twitter:title" content="{escaped_title}">',
-                    )
-                    html_content = html_content.replace(
-                        '<meta name="twitter:description" content="Candid piano recordings from a Yamaha Disklavier. Mostly classical, some pop and improv. Browse by date and listen with interactive piano roll visualization.">',
-                        f'<meta name="twitter:description" content="{escaped_description}">',
-                    )
-                    html_content = html_content.replace(
-                        "<title>Chris's Piano DB</title>",
-                        f"<title>{html.escape(custom_title)} - Chris's Piano DB</title>",
-                    )
-                    break
+                # Replace metadata in HTML
+                html_content = html_content.replace(
+                    '<meta property="og:title" content="Chris\'s Piano Database">',
+                    f'<meta property="og:title" content="{escaped_title}">',
+                )
+                html_content = html_content.replace(
+                    '<meta property="og:description" content="Candid piano recordings from a Yamaha Disklavier. Mostly classical, some pop and improv. Browse by date and listen with interactive piano roll visualization.">',
+                    f'<meta property="og:description" content="{escaped_description}">',
+                )
+                html_content = html_content.replace(
+                    '<meta name="twitter:title" content="Chris\'s Piano Database">',
+                    f'<meta name="twitter:title" content="{escaped_title}">',
+                )
+                html_content = html_content.replace(
+                    '<meta name="twitter:description" content="Candid piano recordings from a Yamaha Disklavier. Mostly classical, some pop and improv. Browse by date and listen with interactive piano roll visualization.">',
+                    f'<meta name="twitter:description" content="{escaped_description}">',
+                )
+                html_content = html_content.replace(
+                    "<title>Chris's Piano DB</title>",
+                    f"<title>{html.escape(custom_title)} - Chris's Piano DB</title>",
+                )
 
         except Exception as e:
             # If anything goes wrong, just serve the default page
@@ -116,7 +111,8 @@ async def get_recordings():
     """Get all MIDI recordings with metadata"""
     recordings = []
 
-    for recording_path in iter_midi_recordings():
+    for tag in iter_midi_tags():
+        recording_path = get_midi_recording(tag)
         parsed = parse_recording_filename(recording_path)
         if parsed is None:
             continue
@@ -132,7 +128,8 @@ async def get_recordings():
         date_obj = datetime.datetime.fromtimestamp(timestamp, tz=eastern_tz)
 
         recording_data = {
-            "filename": recording_path.name,
+            "tag": tag,
+            "filename": recording_path.name,  # Keep for backward compatibility
             "filepath": str(recording_path),
             "timestamp": timestamp,
             "date": date_obj.strftime("%Y-%m-%d"),
@@ -154,7 +151,8 @@ async def get_recordings_by_date():
     """Get recordings organized by date for calendar view"""
     recordings_by_date = {}
 
-    for recording_path in iter_midi_recordings():
+    for tag in iter_midi_tags():
+        recording_path = get_midi_recording(tag)
         parsed = parse_recording_filename(recording_path)
         if parsed is None:
             continue
@@ -173,7 +171,8 @@ async def get_recordings_by_date():
             recordings_by_date[date_str] = []
 
         recording_data = {
-            "filename": recording_path.name,
+            "tag": tag,
+            "filename": recording_path.name,  # Keep for backward compatibility
             "filepath": str(recording_path),
             "timestamp": timestamp,
             "time": date_obj.strftime("%H:%M:%S"),
@@ -190,65 +189,50 @@ async def get_recordings_by_date():
     return recordings_by_date
 
 
-@app.get("/api/midi/{filename}")
-async def serve_midi_file(filename: str):
+@app.get("/api/player_midi/{tag}")
+async def prepare_and_download_player_midi(tag: str):
     """Serve a MIDI file for playback with sustain pedal burned in"""
 
-    # Find the file in the recordings
-    for recording_path in iter_midi_recordings():
-        if recording_path.name == filename:
-            if not recording_path.exists():
-                raise HTTPException(status_code=404, detail="MIDI file not found")
+    # Remove .mid extension if present to get the actual tag
+    if tag.endswith(".mid"):
+        actual_tag = tag[:-4]
+    else:
+        actual_tag = tag
 
-            # Process MIDI file to burn in sustain pedal effect
-            processed_midi_bytes = burn_midi_sustain(str(recording_path))
+    try:
+        recording_path = get_midi_recording(actual_tag)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="MIDI file not found")
 
-            # Return with proper headers for MIDI players
-            return Response(
-                content=processed_midi_bytes,
-                media_type="audio/midi",
-                headers={
-                    "Content-Disposition": f"inline; filename={filename}",
-                    "Content-Length": str(len(processed_midi_bytes)),
-                    "Accept-Ranges": "bytes",
-                    "Cache-Control": "no-cache",
-                },
-            )
+    # Process MIDI file to burn in sustain pedal effect
+    processed_midi_bytes = burn_midi_sustain(str(recording_path))
 
-    raise HTTPException(status_code=404, detail="MIDI file not found")
-
-
-@app.get("/api/download/{filename}")
-async def download_midi_file(filename: str):
-    """Download a MIDI file"""
-    # Find the file in the recordings
-    for recording_path in iter_midi_recordings():
-        if recording_path.name == filename:
-            if not recording_path.exists():
-                raise HTTPException(status_code=404, detail="MIDI file not found")
-
-            return FileResponse(
-                path=str(recording_path),
-                media_type="audio/midi",
-                filename=filename,
-                headers={"Content-Disposition": f"attachment; filename={filename}"},
-            )
-
-    raise HTTPException(status_code=404, detail="MIDI file not found")
+    # Return with proper headers for MIDI players
+    return Response(
+        content=processed_midi_bytes,
+        media_type="audio/midi",
+        headers={
+            "Content-Disposition": f"inline; filename={tag if tag.endswith('.mid') else tag + '.mid'}",
+            "Content-Length": str(len(processed_midi_bytes)),
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=31536000, immutable",
+        },
+    )
 
 
-@app.post("/api/convert-to-mp3/{filename}")
-async def convert_midi_to_mp3(filename: str):
+@app.get("/api/preview_mp3/{tag}")
+async def prepare_and_download_preview_mp3(tag: str):
     """Convert a MIDI file to MP3 using FluidSynth and return for download"""
 
-    # Find the file in the recordings
-    recording_path = None
-    for path in iter_midi_recordings():
-        if path.name == filename:
-            recording_path = path
-            break
+    # Remove .mp3 extension if present to get the actual tag
+    if tag.endswith(".mp3"):
+        actual_tag = tag[:-4]
+    else:
+        actual_tag = tag
 
-    if recording_path is None or not recording_path.exists():
+    try:
+        recording_path = get_midi_recording(actual_tag)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="MIDI file not found")
 
     # Load MIDI file using pretty_midi
@@ -273,15 +257,39 @@ async def convert_midi_to_mp3(filename: str):
     mp3_buffer.seek(0)
     mp3_data = mp3_buffer.getvalue()
 
-    # Return MP3 file
-    mp3_filename = filename.replace(".mid", ".mp3")
-
     return StreamingResponse(
         io.BytesIO(mp3_data),
         media_type="audio/mpeg",
         headers={
-            "Content-Disposition": f"attachment; filename={mp3_filename}",
+            "Content-Disposition": f"attachment; filename={tag if tag.endswith('.mp3') else tag + '.mp3'}",
             "Content-Length": str(len(mp3_data)),
+            "Cache-Control": "public, max-age=31536000, immutable",
+        },
+    )
+
+
+@app.get("/api/raw_midi/{tag}")
+async def download_raw_midi(tag: str):
+    """Download a raw MIDI file"""
+
+    # Remove .mid extension if present to get the tag
+    if tag.endswith(".mid"):
+        actual_tag = tag[:-4]
+    else:
+        actual_tag = tag
+
+    try:
+        recording_path = get_midi_recording(actual_tag)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="MIDI file not found")
+
+    return FileResponse(
+        path=str(recording_path),
+        media_type="audio/midi",
+        filename=tag,
+        headers={
+            "Content-Disposition": f"attachment; filename={tag}",
+            "Cache-Control": "public, max-age=31536000, immutable",
         },
     )
 
