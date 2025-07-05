@@ -92,6 +92,15 @@
                     </midi-visualizer>
                 </div>
 
+                <!-- MIDI Output Controls -->
+                <div class="midi-output-controls">
+                    <label for="midiOutputSelect">MIDI Output:</label>
+                    <select id="midiOutputSelect">
+                        <option value="">No MIDI Output</option>
+                    </select>
+                    <span id="midiStatus" class="midi-status">Checking MIDI support...</span>
+                </div>
+
                 <!-- Player Controls -->
                 <div class="player-controls" style="display: none;">
                     <button id="playBtn" disabled>▶️ Play</button>
