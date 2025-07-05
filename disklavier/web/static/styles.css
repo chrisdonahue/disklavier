@@ -107,6 +107,48 @@ midi-player {
     overflow: auto;
 }
 
+/* MIDI Output Controls */
+.midi-output-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+}
+
+.midi-output-controls label {
+    color: white;
+    font-weight: bold;
+}
+
+.midi-output-controls select {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 5px;
+    background: white;
+    color: #333;
+    font-size: 0.9rem;
+    min-width: 200px;
+}
+
+.midi-status {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-style: italic;
+}
+
+.midi-status.connected {
+    color: #4caf50;
+}
+
+.midi-status.error {
+    color: #ff6b6b;
+}
+
 .player-controls {
     display: flex;
     justify-content: center;
@@ -507,6 +549,17 @@ midi-player {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
+    }
+
+    .midi-output-controls {
+        flex-direction: column;
+        text-align: center;
+        gap: 8px;
+    }
+
+    .midi-output-controls select {
+        min-width: auto;
+        width: 100%;
     }
 }
 

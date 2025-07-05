@@ -21,6 +21,14 @@ const pauseBtn = document.getElementById('pauseBtn');
 const stopBtn = document.getElementById('stopBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 
+// MIDI output controls
+const midiOutputSelect = document.getElementById('midiOutputSelect');
+const midiStatus = document.getElementById('midiStatus');
+
+// MIDI variables
+let midiAccess = null;
+let selectedMidiOutput = null;
+
 // Calendar controls
 const prevMonthBtn = document.getElementById('prevMonth');
 const nextMonthBtn = document.getElementById('nextMonth');
@@ -38,34 +46,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             pixelsPerTimeStep: 60,
             minPitch: 21,  // A0
             maxPitch: 108, // C8
-            showOnlyOctaveLabels: true,
-            colorMap: {
-                0: '#ff6b6b',  // Channel 0 - red
-                1: '#4ecdc4',  // Channel 1 - teal
-                2: '#45b7d1',  // Channel 2 - blue
-                3: '#96ceb4',  // Channel 3 - green
-                4: '#feca57',  // Channel 4 - yellow
-                5: '#ff9ff3',  // Channel 5 - pink
-                6: '#54a0ff',  // Channel 6 - light blue
-                7: '#5f27cd',  // Channel 7 - purple
-                8: '#00d2d3',  // Channel 8 - cyan
-                9: '#ff6348'   // Channel 9 - orange (drums)
-            }
+            //noteRGB: '8, 41, 61',
+            //activeNoteRGB: '255, 255, 255',
         };
-    }
-    
-    // Configure MIDI player for better sustain pedal handling
-    if (midiPlayer) {
-        // Enable sustain pedal processing - this should handle CC 64 messages
-        midiPlayer.addEventListener('start', () => {
-            console.log('🎹 MIDI playback started - sustain pedal should be active');
-        });
-        
-        // Log MIDI events for debugging pedal data
-        midiPlayer.addEventListener('note', (e) => {
-            // This will help us see if pedal data is in the MIDI file
-            console.log('🎵 MIDI event:', e.detail);
-        });
     }
     
     // iOS Safari audio fix: Initialize audio context on first user interaction
@@ -73,6 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     setupEventListeners();
     await loadRecordings();
+    setupMIDIControls();
     renderCalendar();
     
     // Check for shared recording link parameters
@@ -197,6 +181,20 @@ function setupEventListeners() {
         }
     });
 
+    // MIDI output selection
+    midiOutputSelect.addEventListener('change', (e) => {
+        const deviceId = e.target.value;
+        if (deviceId && midiAccess) {
+            selectedMidiOutput = midiAccess.outputs.get(deviceId);
+            midiStatus.textContent = `Connected to ${selectedMidiOutput.name}`;
+            midiStatus.className = 'midi-status connected';
+        } else {
+            selectedMidiOutput = null;
+            midiStatus.textContent = 'No MIDI output selected';
+            midiStatus.className = 'midi-status';
+        }
+    });
+
     // MIDI player events
     if (midiPlayer) {
         midiPlayer.addEventListener('start', () => {
@@ -205,10 +203,35 @@ function setupEventListeners() {
 
         midiPlayer.addEventListener('stop', () => {
             updatePlayerControls(false);
+            // Send all notes off when stopping
+            sendAllNotesOff();
         });
 
         midiPlayer.addEventListener('pause', () => {
             updatePlayerControls(false);
+            // Send all notes off when pausing
+            sendAllNotesOff();
+        });
+
+        // Listen for MIDI note events to send to external device
+        midiPlayer.addEventListener('note', (event) => {
+            if (selectedMidiOutput) {
+                const note = event.detail.note;
+                //console.log('🎵 MIDI note:', note);
+                
+                // Send note on immediately
+                const noteOnMessage = [0x90, note.pitch, note.velocity];
+                sendMIDIMessage(noteOnMessage);
+                
+                // Schedule note off at precise time
+                const durationMs = (note.endTime - note.startTime) * 1000;
+                setTimeout(() => {
+                    if (selectedMidiOutput && selectedMidiOutput.state === 'connected') {
+                        const noteOffMessage = [0x80, note.pitch, 0];
+                        sendMIDIMessage(noteOffMessage);
+                    }
+                }, durationMs);
+            }
         });
     }
 }
@@ -898,4 +921,150 @@ window.addEventListener('error', (event) => {
 window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
     hideLoading();
-}); 
+});
+
+// Setup MIDI controls (initially hidden)
+function setupMIDIControls() {
+    // Initially hide the MIDI device controls
+    if (midiOutputSelect) {
+        midiOutputSelect.style.display = 'none';
+    }
+    if (midiStatus) {
+        midiStatus.style.display = 'none';
+    }
+    
+    // Create enable button
+    const enableMidiBtn = document.createElement('button');
+    enableMidiBtn.id = 'enableMidiBtn';
+    enableMidiBtn.textContent = '🎹 Enable MIDI Output';
+    enableMidiBtn.className = 'enable-midi-btn';
+    enableMidiBtn.style.cssText = `
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-top: 10px;
+        display: block;
+    `;
+    
+    // Add hover effect
+    enableMidiBtn.addEventListener('mouseenter', () => {
+        enableMidiBtn.style.background = '#218838';
+    });
+    enableMidiBtn.addEventListener('mouseleave', () => {
+        enableMidiBtn.style.background = '#28a745';
+    });
+    
+    // Add click handler
+    enableMidiBtn.addEventListener('click', async () => {
+        enableMidiBtn.disabled = true;
+        enableMidiBtn.textContent = '🎹 Enabling MIDI...';
+        enableMidiBtn.style.cursor = 'not-allowed';
+        
+        try {
+            await initializeMIDI();
+            // Hide the enable button and show the MIDI controls
+            enableMidiBtn.style.display = 'none';
+            if (midiOutputSelect) {
+                midiOutputSelect.style.display = 'block';
+            }
+            if (midiStatus) {
+                midiStatus.style.display = 'block';
+            }
+        } catch (error) {
+            // Re-enable button if there was an error
+            enableMidiBtn.disabled = false;
+            enableMidiBtn.textContent = '🎹 Enable MIDI Output';
+            enableMidiBtn.style.cursor = 'pointer';
+            enableMidiBtn.style.background = '#dc3545';
+            setTimeout(() => {
+                enableMidiBtn.style.background = '#28a745';
+            }, 2000);
+        }
+    });
+    
+    // Insert the button before the existing MIDI controls
+    if (midiOutputSelect && midiOutputSelect.parentNode) {
+        midiOutputSelect.parentNode.insertBefore(enableMidiBtn, midiOutputSelect);
+    }
+}
+
+// Initialize Web MIDI API
+async function initializeMIDI() {
+    if (!navigator.requestMIDIAccess) {
+        midiStatus.textContent = 'Web MIDI API not supported';
+        midiStatus.className = 'midi-status error';
+        throw new Error('Web MIDI API not supported');
+    }
+
+    try {
+        midiAccess = await navigator.requestMIDIAccess();
+        console.log('🎹 MIDI access granted');
+        
+        // Populate MIDI output devices (this will set the appropriate status)
+        updateMIDIDevices();
+        
+        // Listen for device changes
+        midiAccess.addEventListener('statechange', updateMIDIDevices);
+        
+    } catch (error) {
+        console.error('Failed to get MIDI access:', error);
+        midiStatus.textContent = 'MIDI access denied';
+        midiStatus.className = 'midi-status error';
+        throw error;
+    }
+}
+
+// Update MIDI device list
+function updateMIDIDevices() {
+    if (!midiAccess) {
+        midiStatus.textContent = 'MIDI access not available';
+        midiStatus.className = 'midi-status error';
+        return;
+    }
+    
+    // Clear existing options (except "No MIDI Output")
+    midiOutputSelect.innerHTML = '<option value="">No MIDI Output</option>';
+    
+    // Add available output devices
+    const outputs = Array.from(midiAccess.outputs.values());
+    if (outputs.length === 0) {
+        midiStatus.textContent = 'No MIDI devices found';
+        midiStatus.className = 'midi-status';
+        return;
+    }
+    
+    outputs.forEach(output => {
+        const option = document.createElement('option');
+        option.value = output.id;
+        option.textContent = output.name;
+        midiOutputSelect.appendChild(option);
+    });
+    
+    midiStatus.textContent = `${outputs.length} MIDI device(s) available`;
+    midiStatus.className = 'midi-status connected';
+}
+
+// Send MIDI message to selected output
+function sendMIDIMessage(message) {
+    if (selectedMidiOutput && selectedMidiOutput.state === 'connected') {
+        try {
+            selectedMidiOutput.send(message);
+        } catch (error) {
+            console.error('Failed to send MIDI message:', error);
+        }
+    }
+}
+
+// Send all notes off message to prevent stuck notes
+function sendAllNotesOff() {
+    if (selectedMidiOutput) {
+        for (let pitch = 0; pitch < 128; pitch++) {
+            const noteOffMessage = [0x80, pitch, 0];
+            sendMIDIMessage(noteOffMessage);
+        }
+    }
+} 
