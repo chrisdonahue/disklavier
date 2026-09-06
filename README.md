@@ -42,6 +42,108 @@ Built-in modes:
 | 0 | `surveil` | Records everything played, saving a take after each silence |
 | 1 | `test` | Plays every note on the piano at velocity 60 |
 
+### Network MIDI (mode 2)
+
+Mode 2 bridges the piano to a network MIDI session so a Mac can play it and
+record from it. It publishes a pair of virtual ALSA sequencer ports named
+`Disklavier Network`:
+
+```
+Mac  ->  RTP-MIDI daemon  ->  Disklavier Network  ->  piano
+piano ->  Disklavier Network  ->  RTP-MIDI daemon  ->  Mac
+```
+
+The mode does not speak RTP-MIDI itself. A separate daemon handles the protocol
+and the Bonjour advertisement, and is connected to these ports with `aconnect`.
+That keeps protocol code out of this repo and lets the daemon be swapped freely.
+
+Use the **"Network"** session in macOS Audio MIDI Setup, not "UMP Network".
+"Network" is AppleMIDI/RTP-MIDI, works on every macOS version, and has several
+Linux daemons. "UMP Network" is MIDI 2.0 over the wire, exists only on very
+recent macOS, and has essentially no Linux support — and this pipeline is
+byte-oriented MIDI 1.0 throughout, so it would gain nothing.
+
+Daemon options, none of which are packaged for Raspberry Pi OS by default:
+
+| Daemon | Cost | Notes |
+|---|---|---|
+| [McLaren Labs rtpmidi](https://mclarenlabs.com/) | $5 | Full journal recovery; runs headless as a service |
+| [MMKServer](https://mclarenlabs.com/) | free | Same vendor, systemd service, web console |
+| [rtpmidid](https://github.com/davidmoreno/rtpmidid) | free | Prebuilt .debs, but self-described alpha and **no journal** |
+
+Journal recovery matters on WiFi: without it a dropped packet can leave a note
+stuck on, since the note-off never arrives.
+
+**Setup used here** — `rtpmidid` installed from its Debian package, with its
+systemd unit disabled so mode 2 owns the daemon's lifecycle:
+
+```bash
+sudo apt install ./rtpmidid_24.12.2_arm64.deb
+sudo systemctl disable --now rtpmidid
+```
+
+Its config lives at `~/.config/disklavier/rtpmidid.ini`. The `[alsa_announce]`
+section is what creates a persistent ALSA port to wire to; `[rtpmidi_announce]`
+alone only creates one once the Mac connects, leaving nothing to pre-wire. The
+`[alsa_hw_auto_export]` section is deliberately omitted — rtpmidid's built-in
+default exports every local ALSA port, which makes extra sessions appear in
+Audio MIDI Setup beside the real one.
+
+#### Direct vs relay
+
+`direct` (the default) wires the piano's own ALSA port straight to the daemon.
+The hardware port is bidirectional, so this produces **one** network session and
+MIDI never passes through Python — no added latency. The session shows up in
+Audio MIDI Setup named after the ALSA device (`USB Midi-USB Midi MIDI 1`); that
+name comes from the hardware and cannot be changed from here.
+
+Setting `direct: false` relays through the virtual ports instead, so the mode
+can see and filter traffic. The cost is a Python hop on every message and **two**
+sessions on the Mac, one per direction, since each ALSA port is announced
+separately and each is one-way.
+
+Either way the mode gates access: connections are made on entry and torn down on
+exit, so the Mac can only reach the piano while mode 2 is active.
+
+Mode 2 can run the daemon for you, starting it on entry and stopping it on
+exit, so nothing lingers when you switch modes. Set `daemon_command` in the
+config:
+
+```json
+"2": {"mode": "network", "options": {
+  "daemon_command": "rtpmidid --name Disklavier",
+  "daemon_port_pattern": "rtpmidi*"
+}}
+```
+
+On entry the mode spawns that command in its own process group, waits for the
+matching ALSA port to appear, and wires it to its own ports in both directions.
+On exit it disconnects, SIGTERMs the process group, and escalates to SIGKILL if
+the daemon ignores it. A missing binary is reported and the bridge still comes
+up, so a bad `daemon_command` never wedges the mode.
+
+Leave `daemon_command` unset to manage the daemon yourself, then wire it by hand:
+
+```bash
+aconnect -i                                   # sources (read from)
+aconnect -o                                   # destinations (write to)
+aconnect <daemon source> <our dest>           # network -> piano
+aconnect <our source> <daemon dest>           # piano -> network
+```
+
+Note that the two halves of a virtual port pair share a name, so you must pick
+each end from the right list — `-i` for the source, `-o` for the destination.
+Matching by name alone picks the wrong half and ALSA rejects the connection with
+"Operation not permitted".
+
+The virtual ports stay published for the life of the process, including while
+another mode is active — ALSA will not release a virtual port before the process
+exits, and keeping them up means the Mac's session survives a mode switch.
+Relaying only happens while mode 2 is active.
+
+Note that the mode-switch keys are consumed by the controller, so **the top two
+keys of the piano do not reach the Mac**.
+
 ### Switching Modes from the Console
 
 When the controller is attached to a terminal it also takes commands on stdin,

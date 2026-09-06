@@ -29,6 +29,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "modes": {
         "0": {"mode": "surveil", "options": {"silence_timeout": 10.0}},
         "1": {"mode": "test", "options": {"velocity": 60}},
+        "2": {"mode": "network", "options": {}},
+        "3": {
+            "mode": "delay",
+            "options": {"repeats": 3, "first_factor": 1.25, "last_factor": 0.75},
+        },
+        "4": {
+            "mode": "looper",
+            "options": {"max_patterns": 1, "velocity_factor": 1.25},
+        },
     },
 }
 
