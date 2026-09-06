@@ -14,6 +14,14 @@ else:
 RECORDINGS_DIR = CACHE_DIR / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
+if "DISKLAVIER_CONFIG_DIR" in os.environ:
+    CONFIG_DIR = pathlib.Path(os.environ["DISKLAVIER_CONFIG_DIR"])
+else:
+    CONFIG_DIR = pathlib.Path.home() / ".config" / "disklavier"
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+CONFIG_PATH = CONFIG_DIR / "config.json"
+
 
 def iter_midi_recordings() -> Iterator[pathlib.Path]:
     for file in sorted(RECORDINGS_DIR.glob("*.mid")):

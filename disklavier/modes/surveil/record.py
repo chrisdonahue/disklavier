@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Disklavier Recording Daemon
+Surveil mode: continuous MIDI recording.
 
-This daemon continuously records MIDI input from a Disklavier with high timing precision.
-It automatically starts recording when MIDI input is received and saves files when
-silence is detected for a configurable duration.
+Records MIDI input from a Disklavier with high timing precision.  Recording
+starts automatically when MIDI input arrives and the file is saved once silence
+is detected for a configurable duration.
 """
 
 import argparse
@@ -14,34 +14,35 @@ import signal
 import sys
 import threading
 import time
-from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
-from .disklavier import Disklavier
-from .paths import RECORDINGS_DIR
+from ..base import Mode
+from ...paths import RECORDINGS_DIR
 
 
 class MidiRecorder:
     """
     High-precision MIDI recorder with automatic silence detection and file saving.
+
+    This class only consumes MIDI messages handed to it; opening the hardware is
+    the caller's job.
     """
 
     def __init__(
         self,
-        input_device_pattern: str = "*USB Midi*",
         silence_timeout: float = 10.0,
-        filter_system: bool = True,
+        message_namer: Optional[Callable[[List[int]], str]] = None,
     ):
         """
         Initialize the MIDI recorder.
 
         Args:
-            input_device_pattern: Pattern for MIDI input device
             silence_timeout: Seconds of silence before saving recording
-            filter_system: Whether to filter out system timing messages
+            message_namer: Optional callable turning MIDI bytes into a readable
+                name, used only for console feedback
         """
         self.silence_timeout = silence_timeout
-        self.filter_system = filter_system
+        self._message_namer = message_namer
 
         # Recording state
         self.is_recording = False
@@ -51,33 +52,10 @@ class MidiRecorder:
         self.note_count = 0
 
         # Threading
-        self._stop_event = threading.Event()
         self._silence_timer = None
         self._lock = threading.Lock()
 
-        # Initialize Disklavier
-        print(f"🎹 Initializing Disklavier recording daemon...")
-        print(f"   Input device pattern: {input_device_pattern}")
-        print(f"   Silence timeout: {silence_timeout}s")
-        print(f"   Filter system messages: {filter_system}")
-
-        self.disklavier = Disklavier(
-            input_device_pattern=input_device_pattern,
-            output_device_pattern=None,  # Recording only, no output needed
-            filter_system=filter_system,
-        )
-
-        if self.disklavier.midi_in is None:
-            raise RuntimeError(
-                "No MIDI input device found. Cannot start recording daemon."
-            )
-
-        print("✓ Disklavier initialized successfully")
-
-        # Set up MIDI callback
-        self.disklavier.set_callback(self._midi_callback)
-
-    def _midi_callback(self, midi_bytes: List[int], delta_time: float):
+    def handle_midi(self, midi_bytes: List[int], delta_time: float):
         """
         High-precision MIDI callback that records events with timestamps.
 
@@ -101,7 +79,7 @@ class MidiRecorder:
             # Store the event with high precision timestamp
             self.midi_events.append(
                 {
-                    "message": midi_bytes.copy(),
+                    "message": list(midi_bytes),
                     "timestamp": timestamp,
                     "delta_time": delta_time,
                     "absolute_time": current_time,
@@ -121,10 +99,16 @@ class MidiRecorder:
             self._reset_silence_timer()
 
             # Print real-time feedback
-            msg_type_name = self.disklavier.get_message_type_name(midi_bytes)
+            msg_type_name = self._describe(midi_bytes)
             print(
                 f"📥 {msg_type_name}: {midi_bytes} (t={timestamp:.3f}s, notes={self.note_count})"
             )
+
+    def _describe(self, midi_bytes: List[int]) -> str:
+        """Human-readable name for a message, if a namer was supplied."""
+        if self._message_namer is None:
+            return "MIDI"
+        return self._message_namer(midi_bytes)
 
     def _start_recording(self, start_time: float):
         """Start a new recording session."""
@@ -148,12 +132,21 @@ class MidiRecorder:
         self._silence_timer = threading.Timer(
             self.silence_timeout, self._on_silence_timeout
         )
+        self._silence_timer.daemon = True
         self._silence_timer.start()
 
     def _on_silence_timeout(self):
         """Handle silence timeout - save recording and reset."""
         with self._lock:
             if self.is_recording and self.midi_events:
+                self._save_recording()
+            self._stop_recording()
+
+    def flush(self):
+        """Save any in-progress recording and reset to the idle state."""
+        with self._lock:
+            if self.is_recording and self.midi_events:
+                print("💾 Saving in-progress recording...")
                 self._save_recording()
             self._stop_recording()
 
@@ -257,53 +250,44 @@ class MidiRecorder:
         except Exception as e:
             print(f"❌ Error saving recording: {e}")
 
-    def run(self):
-        """Run the recording daemon."""
-        print(f"\n🎯 MIDI Recording Daemon Active")
+
+class SurveilMode(Mode):
+    """
+    Listen to the piano and record everything played.
+
+    Recording begins on the first message and the take is written to disk once
+    the piano has been silent for ``silence_timeout`` seconds.
+    """
+
+    name = "surveil"
+    description = "Record everything played, saving a take after each silence"
+
+    def __init__(self, disklavier, silence_timeout: float = 10.0):
+        """
+        Args:
+            disklavier: Live Disklavier interface
+            silence_timeout: Seconds of silence before saving a recording
+        """
+        super().__init__(disklavier)
+        self.recorder = MidiRecorder(
+            silence_timeout=silence_timeout,
+            message_namer=disklavier.get_message_type_name,
+        )
+
+    def start(self) -> None:
         print(f"📁 Recordings will be saved to: {RECORDINGS_DIR}")
-        print(f"⏱️  Silence timeout: {self.silence_timeout}s")
-        print(f"🎧 Waiting for MIDI input...")
-        print("   Press Ctrl+C to stop")
+        print(f"⏱️  Silence timeout: {self.recorder.silence_timeout}s")
+        print("🎧 Waiting for MIDI input...")
 
-        try:
-            # Set up signal handlers for graceful shutdown
-            signal.signal(signal.SIGINT, self._signal_handler)
-            signal.signal(signal.SIGTERM, self._signal_handler)
+    def handle_midi(self, midi_bytes: List[int], delta_time: float) -> None:
+        self.recorder.handle_midi(midi_bytes, delta_time)
 
-            # Main daemon loop
-            while not self._stop_event.is_set():
-                time.sleep(0.1)  # Small sleep to prevent busy waiting
-
-        except KeyboardInterrupt:
-            pass
-        finally:
-            self._shutdown()
-
-    def _signal_handler(self, signum, frame):
-        """Handle shutdown signals."""
-        print(f"\n🛑 Received signal {signum}, shutting down...")
-        self._stop_event.set()
-
-    def _shutdown(self):
-        """Clean shutdown of the recording daemon."""
-        print("🛑 Shutting down recording daemon...")
-
-        # Save any ongoing recording
-        with self._lock:
-            if self.is_recording and self.midi_events:
-                print("💾 Saving final recording...")
-                self._save_recording()
-            self._stop_recording()
-
-        # Clean up
-        if self.disklavier:
-            self.disklavier.close()
-
-        print("✓ Shutdown complete")
+    def stop(self) -> None:
+        self.recorder.flush()
 
 
 def main():
-    """Main entry point for the recording daemon."""
+    """Standalone entry point: run surveil mode on its own, without mode switching."""
     parser = argparse.ArgumentParser(
         description="Disklavier Recording Daemon - Continuous MIDI recording with automatic file saving"
     )
@@ -334,11 +318,13 @@ def main():
 
     args = parser.parse_args()
 
+    # Imported here so --list-devices works even without a device attached
+    from ...disklavier import Disklavier
+    from ...midi import MidiInterface
+
     # List devices and exit if requested
     if args.list_devices:
         print("🎹 Available MIDI Input Devices:")
-        from .midi import MidiInterface
-
         devices = MidiInterface.list_input_devices()
         if devices:
             for i, device in enumerate(devices):
@@ -347,19 +333,58 @@ def main():
             print("  No MIDI input devices found")
         return
 
+    disklavier = None
     try:
-        # Create and run the recorder
-        recorder = MidiRecorder(
+        print("🎹 Initializing Disklavier recording daemon...")
+        print(f"   Input device pattern: {args.input}")
+        print(f"   Silence timeout: {args.timeout}s")
+        print(f"   Filter system messages: {not args.include_system}")
+
+        disklavier = Disklavier(
             input_device_pattern=args.input,
-            silence_timeout=args.timeout,
+            output_device_pattern=None,  # Recording only, no output needed
             filter_system=not args.include_system,
         )
 
-        recorder.run()
+        if disklavier.midi_in is None:
+            raise RuntimeError(
+                "No MIDI input device found. Cannot start recording daemon."
+            )
+
+        print("✓ Disklavier initialized successfully")
+
+        mode = SurveilMode(disklavier, silence_timeout=args.timeout)
+        disklavier.set_callback(mode.handle_midi)
+
+        print("\n🎯 MIDI Recording Daemon Active")
+        mode.start()
+        print("   Press Ctrl+C to stop")
+
+        stop_event = threading.Event()
+
+        def signal_handler(signum, frame):
+            print(f"\n🛑 Received signal {signum}, shutting down...")
+            stop_event.set()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        try:
+            while not stop_event.is_set():
+                time.sleep(0.1)  # Small sleep to prevent busy waiting
+        except KeyboardInterrupt:
+            pass
+
+        print("🛑 Shutting down recording daemon...")
+        mode.stop()
+        print("✓ Shutdown complete")
 
     except Exception as e:
         print(f"❌ Failed to start recording daemon: {e}")
         sys.exit(1)
+    finally:
+        if disklavier is not None:
+            disklavier.close()
 
 
 if __name__ == "__main__":

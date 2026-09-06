@@ -1,6 +1,8 @@
 from typing import List, Callable, Optional
 import argparse
 from .midi import MidiInterface
+from .notes import HIGHEST_NOTE, LOWEST_NOTE, get_note_name
+from .tempo import CLOCK, START, STOP, TempoTracker
 
 
 class Disklavier(MidiInterface):
@@ -30,9 +32,16 @@ class Disklavier(MidiInterface):
         super().__init__(input_device_pattern, output_device_pattern)
         self._user_callback = None
         self.filter_system = filter_system
+        self._tempo = TempoTracker()
 
         # Override the parent callback with our filtering callback if input device exists
         if self.midi_in is not None:
+            # rtmidi drops clock, sysex and active sensing unless asked otherwise.
+            # Clock is what makes the panel's tempo dial readable, so let it
+            # through; the other two are pure traffic for this instrument.
+            self.midi_in.ignore_types(
+                sysex=True, timing=False, active_sense=True
+            )
             self.midi_in.set_callback(self._disklavier_callback)
 
     def _is_musical_message(self, midi_bytes: List[int]) -> bool:
@@ -46,6 +55,11 @@ class Disklavier(MidiInterface):
                 return False
         except (IndexError, TypeError):
             return False
+
+        # Transport is a control surface: the panel's play/stop buttons. The
+        # controller consumes these, so they never reach a mode as raw bytes.
+        if status in (START, STOP):
+            return True
 
         # Filter out system messages (timing, etc.)
         if status >= 0xF0:
@@ -94,6 +108,11 @@ class Disklavier(MidiInterface):
         if midi_bytes is None:
             return
 
+        # Clock feeds the tempo tracker and goes no further: it arrives ~50
+        # times a second and is filtered out below as a system message anyway
+        if midi_bytes and midi_bytes[0] == CLOCK:
+            self._tempo.tick()
+
         # Filter to only musical messages if enabled
         if self.filter_system and not self._is_musical_message(midi_bytes):
             return
@@ -116,6 +135,17 @@ class Disklavier(MidiInterface):
         if self.midi_in is None:
             raise RuntimeError("No MIDI input device configured. Cannot set callback.")
         self._user_callback = callback_function
+
+    @property
+    def tempo(self) -> Optional[float]:
+        """
+        Tempo in BPM from the instrument's MIDI clock, or None if it is silent.
+
+        The panel's tempo dial drives this, so a mode can treat it as a
+        continuous control knob.  It reads None whenever the metronome is off or
+        the instrument is in disk mode -- see ``disklavier.tempo`` for why.
+        """
+        return self._tempo.bpm
 
     def send_note_on(self, note: int, velocity: int = 100, channel: int = 0):
         """
@@ -140,6 +170,22 @@ class Disklavier(MidiInterface):
                 "No MIDI output device configured. Cannot send note off."
             )
         self.send_message([0x80 | channel, note, velocity])
+
+    def all_notes_off(self, channel: int = 0):
+        """
+        Send a note off for every key on the piano, clearing any stuck notes.
+
+        Safe to call when nothing is sounding.
+
+        Raises:
+            RuntimeError: If no output device is configured
+        """
+        if self.midi_out is None:
+            raise RuntimeError(
+                "No MIDI output device configured. Cannot send notes off."
+            )
+        for note in range(LOWEST_NOTE, HIGHEST_NOTE + 1):
+            self.send_note_off(note, channel=channel)
 
     def send_control_change(self, control: int, value: int, channel: int = 0):
         """
@@ -396,14 +442,6 @@ def main():
         if "disklavier" in locals():
             disklavier.close()
         print("✓ Goodbye!")
-
-
-def get_note_name(note_number: int) -> str:
-    """Convert MIDI note number to note name."""
-    note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-    octave = (note_number // 12) - 1
-    note = note_names[note_number % 12]
-    return f"{note}{octave}"
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from typing import Optional, Tuple, Dict
 from pathlib import Path
 import calendar
 
-from .paths import iter_midi_recordings
+from ..paths import iter_midi_recordings
 
 try:
     import matplotlib.pyplot as plt

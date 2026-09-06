@@ -18,7 +18,7 @@ import pretty_midi
 import soundfile as sf
 import numpy as np
 
-from ..activity import parse_recording_filename
+from .activity import parse_recording_filename
 from ..paths import REPO_DIR, iter_midi_tags, get_midi_recording
 from .utils import burn_midi_sustain
 
