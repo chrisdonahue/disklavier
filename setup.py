@@ -9,10 +9,11 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "disklavier-record=disklavier.record:main",
+            "disklavier=disklavier.main:main",
+            "disklavier-monitor=disklavier.disklavier:main",
+            "disklavier-record=disklavier.modes.surveil.record:main",
             "disklavier-web=disklavier.web.serve:main",
-            "disklavier-activity=disklavier.activity:main",
-            "disklavier=disklavier.disklavier:main",
+            "disklavier-activity=disklavier.web.activity:main",
         ],
     },
 )

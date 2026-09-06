@@ -10,6 +10,7 @@ A Python package for interfacing with Yamaha Disklavier MIDI systems, featuring 
 - **Automatic file saving** with descriptive filenames including timestamp, duration, and note count
 - **Real-time monitoring** with live feedback of incoming MIDI events
 - **Practice statistics** - analyze practice sessions with detailed activity reports
+- **Modes of operation** - numbered modes selected from the keyboard itself
 
 ## Installation
 
@@ -17,7 +18,116 @@ A Python package for interfacing with Yamaha Disklavier MIDI systems, featuring 
 pip install -e .
 ```
 
+## Modes of Operation
+
+`disklavier` is the master controller. It opens the hardware once, then runs a
+single *mode* at a time. Modes live in `disklavier/modes/` and are numbered by
+the configuration file.
+
+```bash
+# Run the controller (starts in mode 0)
+disklavier
+
+# Start in a specific mode
+disklavier -m 1
+
+# See which mode implementations exist
+disklavier --list-modes
+```
+
+Built-in modes:
+
+| # | Mode | What it does |
+|---|---------|--------------|
+| 0 | `surveil` | Records everything played, saving a take after each silence |
+| 1 | `test` | Plays every note on the piano at velocity 60 |
+
+### Switching Modes from the Console
+
+When the controller is attached to a terminal it also takes commands on stdin,
+which is how you switch modes over ssh or from the service's tmux pane:
+
+| Command | Effect |
+|---------|--------|
+| `<number>` | Switch to that mode |
+| `l` | List configured modes and show the active one |
+| `q` | Quit |
+| `?` | Show help |
+
+Console commands and the keyboard gesture feed the same queue, so the two
+cannot fight over the active mode. The console is skipped automatically when
+stdin is not a terminal, and `--no-console` disables it outright.
+
+### Switching Modes from the Keyboard
+
+Play the top C (108), then the mode number as that many presses of the top B
+(107), then the top C again. The switch happens when you release that final top
+C:
+
+| Sequence | Mode |
+|----------|------|
+| `108, 108` | 0 |
+| `108, 107, 108` | 1 |
+| `108, 107, 107, 108` | 2 |
+
+These two keys are reserved for the controller and never reach the running
+mode, so a mode never sees them as input. Pressing any other key abandons a
+gesture in progress, as does pausing for more than `gesture_timeout` seconds
+mid-gesture.
+
+After an hour with no key pressed, the controller returns to mode 0 whatever
+mode it was in.
+
+### Configuration
+
+The controller reads `~/.config/disklavier/config.json`, writing the defaults on
+first run. Override the directory with `DISKLAVIER_CONFIG_DIR`, or pass a file
+with `disklavier -c path/to/config.json`.
+
+```json
+{
+  "input_device_pattern": "*USB Midi*",
+  "output_device_pattern": "*USB Midi*",
+  "idle_reset_seconds": 3600.0,
+  "mode_switch": {
+    "select_note": 108,
+    "count_note": 107,
+    "gesture_timeout": 5.0
+  },
+  "modes": {
+    "0": {"mode": "surveil", "options": {"silence_timeout": 10.0}},
+    "1": {"mode": "test", "options": {"velocity": 60}}
+  }
+}
+```
+
+Each entry under `modes` maps a mode number to a mode implementation and the
+keyword arguments passed to its constructor. Mode 0 is the default and the one
+returned to when the piano goes idle.
+
+### Adding a Mode
+
+Subclass `Mode` in a new subpackage under `disklavier/modes/`, register it in
+`disklavier/modes/__init__.py`, and add a number for it in the config file:
+
+```python
+from disklavier.modes.base import Mode
+
+class MyMode(Mode):
+    name = "mine"
+    description = "What it does"
+
+    def start(self): ...                              # entering the mode
+    def handle_midi(self, midi_bytes, delta_time): ...  # incoming MIDI
+    def stop(self): ...                               # leaving; leave the piano quiet
+```
+
+The controller hands each mode the shared `Disklavier` connection, so a mode
+never opens MIDI ports itself. Modes are constructed fresh on every activation.
+
 ## Recording Daemon Usage
+
+`disklavier-record` runs surveil mode on its own, without mode switching.
 
 ### Basic Usage
 
@@ -154,7 +264,7 @@ The visualization creates a GitHub-style activity grid showing:
 ### Programmatic Usage
 
 ```python
-from disklavier.activity import activity_over_period, create_summary_image
+from disklavier.web.activity import activity_over_period, create_summary_image
 import time
 
 # Get practice stats for the last week

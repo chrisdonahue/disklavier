@@ -148,6 +148,13 @@ class MidiInterface:
     def close(self):
         """Close MIDI connections and clean up resources."""
         if self.midi_in:
+            # Cancel before closing. Closing a port while a callback is in
+            # flight deadlocks in rtmidi, and with MIDI clock streaming at
+            # ~50 messages a second one almost always is.
+            try:
+                self.midi_in.cancel_callback()
+            except Exception:
+                pass
             self.midi_in.close_port()
             del self.midi_in
             self.midi_in = None
